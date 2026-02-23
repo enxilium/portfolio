@@ -29,6 +29,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const raycaster = useRef(new THREE.Raycaster());
     const pointer = useRef(new THREE.Vector2());
     const { gl } = useThree();
+    const invalidate = useThree((state) => state.invalidate);
 
     // Find pillar objects and compute rise directions
     useEffect(() => {
@@ -81,11 +82,15 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             const rect = canvas.getBoundingClientRect();
             pointer.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             pointer.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            invalidate();
         };
 
         canvas.addEventListener("pointermove", onPointerMove);
         return () => canvas.removeEventListener("pointermove", onPointerMove);
-    }, [gl]);
+    }, [gl, invalidate]);
+
+    // Pre-allocated target position — reused every frame to avoid GC pressure
+    const targetPos = useRef(new THREE.Vector3());
 
     // Check hover and animate both pillars
     useFrame((state) => {
@@ -105,12 +110,11 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         const basePosR = basePositionRight.current;
         const dirR = riseDirectionRight.current;
         if (pillarR && basePosR && dirR) {
-            const targetPos = hoveredRight.current
-                ? basePosR
-                      .clone()
-                      .add(dirR.clone().multiplyScalar(RISE_DISTANCE))
-                : basePosR;
-            pillarR.position.lerp(targetPos, LERP_SPEED);
+            targetPos.current.copy(basePosR);
+            if (hoveredRight.current) {
+                targetPos.current.addScaledVector(dirR, RISE_DISTANCE);
+            }
+            pillarR.position.lerp(targetPos.current, LERP_SPEED);
         }
 
         // Pillar Left
@@ -127,13 +131,15 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         const basePosL = basePositionLeft.current;
         const dirL = riseDirectionLeft.current;
         if (pillarL && basePosL && dirL) {
-            const targetPos = hoveredLeft.current
-                ? basePosL
-                      .clone()
-                      .add(dirL.clone().multiplyScalar(RISE_DISTANCE))
-                : basePosL;
-            pillarL.position.lerp(targetPos, LERP_SPEED);
+            targetPos.current.copy(basePosL);
+            if (hoveredLeft.current) {
+                targetPos.current.addScaledVector(dirL, RISE_DISTANCE);
+            }
+            pillarL.position.lerp(targetPos.current, LERP_SPEED);
         }
+
+        // Invalidate to request next frame (demand mode)
+        state.invalidate();
     });
 
     return null;

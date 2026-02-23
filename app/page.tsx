@@ -5,26 +5,37 @@ import { Environment, useGLTF } from "@react-three/drei";
 import CameraController from "./CameraController";
 import PillarAnimation from "./PillarAnimation";
 
-function SceneContent() {
-  const { scene, cameras } = useGLTF("/scene.glb");
+// Pre-configure the Draco decoder for compressed GLB files
+useGLTF.setDecoderPath(
+    "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
+);
 
-  return (
-    <>
-      <CameraController cameras={cameras} scene={scene} />
-      <PillarAnimation scene={scene} />
-      <primitive object={scene} />
-    </>
-  );
+function SceneContent() {
+    const { scene, cameras } = useGLTF("/scene.glb");
+
+    return (
+        <>
+            <CameraController cameras={cameras} scene={scene} />
+            <PillarAnimation scene={scene} />
+            <primitive object={scene} />
+        </>
+    );
 }
 
 export default function Scene() {
-  return (
-    <Canvas>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 5, 5]} intensity={1} />
-      <directionalLight position={[-5, -5, -5]} intensity={0.3} />
-      <Environment preset="studio" />
-      <SceneContent />
-    </Canvas>
-  );
+    return (
+        <Canvas
+            // Cap pixel ratio at 1.5 for integrated GPUs — visually close to 2x at half the fill cost
+            dpr={[1, 1.5]}
+            // Only re-render when something invalidates — saves GPU cycles when scene is idle
+            frameloop="demand"
+            gl={{
+                // Power preference hint for GPU selection on dual-GPU laptops
+                powerPreference: "high-performance",
+            }}
+        >
+            <Environment preset="studio" environmentIntensity={0.1} />
+            <SceneContent />
+        </Canvas>
+    );
 }

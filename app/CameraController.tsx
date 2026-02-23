@@ -32,6 +32,7 @@ export default function CameraController({
 }: CameraControllerProps) {
     const { size } = useThree();
     const threeCamera = useThree((state) => state.camera);
+    const invalidate = useThree((state) => state.invalidate);
     const cameraRef = useRef(threeCamera);
 
     useEffect(() => {
@@ -131,6 +132,7 @@ export default function CameraController({
         const handleMouseMove = (e: MouseEvent) => {
             mouse.current.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+            invalidate();
         };
 
         const handleWheel = (e: WheelEvent) => {
@@ -140,6 +142,7 @@ export default function CameraController({
                 0,
                 Math.min(1, zoom.current - e.deltaY * 0.001),
             );
+            invalidate();
         };
 
         window.addEventListener("mousemove", handleMouseMove);
@@ -148,7 +151,12 @@ export default function CameraController({
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("wheel", handleWheel);
         };
-    }, [freeView]);
+    }, [freeView, invalidate]);
+
+    // Pre-allocated objects reused every frame — avoids GC pressure in the render loop
+    const offsetQuat = useRef(new THREE.Quaternion());
+    const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+    const targetQuat = useRef(new THREE.Quaternion());
 
     // Animate camera in default mode
     useFrame((state) => {
@@ -161,23 +169,24 @@ export default function CameraController({
         // Subtle rotation offset based on mouse — scales up with zoom
         const panScale = 1 + zoom.current * (PAN_ZOOM_MULTIPLIER - 1);
         const panAmount = PAN_AMOUNT * panScale;
-        const offsetQuat = new THREE.Quaternion();
-        const euler = new THREE.Euler(
+        euler.current.set(
             -mouse.current.y * panAmount,
             -mouse.current.x * panAmount,
             0,
-            "YXZ",
         );
-        offsetQuat.setFromEuler(euler);
+        offsetQuat.current.setFromEuler(euler.current);
 
-        const targetQuat = quaternion.clone().multiply(offsetQuat);
-        cam.quaternion.slerp(targetQuat, 0.05);
+        targetQuat.current.copy(quaternion).multiply(offsetQuat.current);
+        cam.quaternion.slerp(targetQuat.current, 0.05);
         cam.position.lerp(position, 0.05);
 
         // Zoom via FOV
         const targetFov = fov * (1 - zoom.current * (1 - ZOOM_IN_FOV_FACTOR));
         cam.fov += (targetFov - cam.fov) * 0.05;
         cam.updateProjectionMatrix();
+
+        // Invalidate to request next frame (demand mode)
+        state.invalidate();
     });
 
     return isDev && freeView ? <OrbitControls ref={controlsRef} /> : null;
