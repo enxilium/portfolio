@@ -10,9 +10,11 @@ const isDev = process.env.NODE_ENV === "development";
 
 // Max rotation offset (radians) for mouse-follow panning
 const PAN_AMOUNT = 0.03;
-// Zoom range: 0 = base (most zoomed out), 1 = most zoomed in
-const ZOOM_IN_FOV_FACTOR = 0.6; // zoomed-in FOV = baseFOV * this factor
-const PAN_ZOOM_MULTIPLIER = 3; // at max zoom, pan amount is multiplied by this
+// Zoom range: -1 = max zoom out, 0 = base (Blender camera), 1 = max zoom in
+const ZOOM_IN_FOV_FACTOR = 0.5;  // at max zoom-in, FOV = baseFOV * 0.5
+const ZOOM_OUT_FOV_FACTOR = 1.4; // at max zoom-out, FOV = baseFOV * 1.4
+const ZOOM_SENSITIVITY = 0.0015; // scroll sensitivity
+const PAN_ZOOM_MULTIPLIER = 3;   // at max zoom, pan amount is multiplied by this
 
 interface BaseState {
     position: THREE.Vector3;
@@ -39,6 +41,19 @@ export default function CameraController({
         cameraRef.current = threeCamera;
     }, [threeCamera]);
     const controlsRef = useRef<OrbitControlsImpl>(null);
+    // Callback ref to sync OrbitControls target when it mounts
+    const setControlsRef = (controls: OrbitControlsImpl | null) => {
+        controlsRef.current = controls;
+        if (controls && baseState.current) {
+            const cam = cameraRef.current;
+            controls.target.copy(baseState.current.target);
+            controls.object.position.copy(cam.position);
+            controls.object.quaternion.copy(cam.quaternion);
+            controls.rotateSpeed = 0.5;
+            controls.zoomSpeed = 0.8;
+            controls.update();
+        }
+    };
 
     const [freeView, setFreeView] = useState(false);
 
@@ -47,7 +62,7 @@ export default function CameraController({
 
     // Mouse position normalized to [-1, 1]
     const mouse = useRef({ x: 0, y: 0 });
-    // Current zoom level [0 = base, 1 = max zoom in]
+    // Current zoom level [-1 = max zoom out, 0 = base, 1 = max zoom in]
     const zoom = useRef(0);
 
     // Extract Blender camera on mount
@@ -65,7 +80,15 @@ export default function CameraController({
             const lookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(
                 worldQuat,
             );
-            const target = worldPos.clone().add(lookDir.multiplyScalar(10));
+
+            // Compute target distance from scene bounding box center
+            const box = new THREE.Box3().setFromObject(scene);
+            const sceneCenter = new THREE.Vector3();
+            box.getCenter(sceneCenter);
+            const distToCenter = worldPos.distanceTo(sceneCenter);
+            // Use distance to scene center, fall back to 10 if scene is empty
+            const targetDist = distToCenter > 0.1 ? distToCenter : 10;
+            const target = worldPos.clone().add(lookDir.multiplyScalar(targetDist));
 
             baseState.current = {
                 position: worldPos.clone(),
@@ -77,6 +100,7 @@ export default function CameraController({
             // Apply initial camera
             activeCamera.position.copy(worldPos);
             activeCamera.quaternion.copy(worldQuat);
+            
             if (activeCamera instanceof THREE.PerspectiveCamera) {
                 activeCamera.fov = cam.fov;
                 activeCamera.near = cam.near;
@@ -111,9 +135,14 @@ export default function CameraController({
                     }
                     // When entering free view, sync OrbitControls target
                     if (next && controlsRef.current && baseState.current) {
+                        const cam = cameraRef.current;
                         controlsRef.current.target.copy(
                             baseState.current.target,
                         );
+                        controlsRef.current.object.position.copy(cam.position);
+                        controlsRef.current.object.quaternion.copy(cam.quaternion);
+                        controlsRef.current.rotateSpeed = 0.5;
+                        controlsRef.current.zoomSpeed = 0.8;
                         controlsRef.current.update();
                     }
                     return next;
@@ -139,8 +168,8 @@ export default function CameraController({
             e.preventDefault();
             // Scroll up = zoom in, scroll down = zoom out
             zoom.current = Math.max(
-                0,
-                Math.min(1, zoom.current - e.deltaY * 0.001),
+                -1,
+                Math.min(1, zoom.current - e.deltaY * ZOOM_SENSITIVITY),
             );
             invalidate();
         };
@@ -167,7 +196,7 @@ export default function CameraController({
         const { position, quaternion, fov } = baseState.current;
 
         // Subtle rotation offset based on mouse — scales up with zoom
-        const panScale = 1 + zoom.current * (PAN_ZOOM_MULTIPLIER - 1);
+        const panScale = 1 + Math.abs(zoom.current) * (PAN_ZOOM_MULTIPLIER - 1);
         const panAmount = PAN_AMOUNT * panScale;
         euler.current.set(
             -mouse.current.y * panAmount,
@@ -180,8 +209,15 @@ export default function CameraController({
         cam.quaternion.slerp(targetQuat.current, 0.05);
         cam.position.lerp(position, 0.05);
 
-        // Zoom via FOV
-        const targetFov = fov * (1 - zoom.current * (1 - ZOOM_IN_FOV_FACTOR));
+        // Zoom via FOV — bidirectional around the Blender base FOV
+        let targetFov: number;
+        if (zoom.current >= 0) {
+            // Zoom in: FOV decreases from baseFOV toward baseFOV * ZOOM_IN_FOV_FACTOR
+            targetFov = fov * (1 - zoom.current * (1 - ZOOM_IN_FOV_FACTOR));
+        } else {
+            // Zoom out: FOV increases from baseFOV toward baseFOV * ZOOM_OUT_FOV_FACTOR
+            targetFov = fov * (1 + Math.abs(zoom.current) * (ZOOM_OUT_FOV_FACTOR - 1));
+        }
         cam.fov += (targetFov - cam.fov) * 0.05;
         cam.updateProjectionMatrix();
 
@@ -189,5 +225,5 @@ export default function CameraController({
         state.invalidate();
     });
 
-    return isDev && freeView ? <OrbitControls ref={controlsRef} /> : null;
+    return isDev && freeView ? <OrbitControls ref={setControlsRef} /> : null;
 }

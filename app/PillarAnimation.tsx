@@ -4,10 +4,10 @@ import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 
-// How far the pillar rises (in scene units)
-const RISE_DISTANCE = 1.5;
+// How far the pillar tilts toward the camera (in radians)
+const TILT_ANGLE = 0.1;
 // Lerp speed for smooth animation
-const LERP_SPEED = 0.05;
+const LERP_SPEED = 0.02;
 
 interface PillarAnimationProps {
     scene: THREE.Group;
@@ -16,14 +16,12 @@ interface PillarAnimationProps {
 export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const pillarRightRef = useRef<THREE.Object3D | null>(null);
     const pillarRightMeshes = useRef<THREE.Mesh[]>([]);
-    const basePositionRight = useRef<THREE.Vector3 | null>(null);
-    const riseDirectionRight = useRef<THREE.Vector3 | null>(null);
+    const baseQuatRight = useRef<THREE.Quaternion | null>(null);
     const hoveredRight = useRef(false);
 
     const pillarLeftRef = useRef<THREE.Object3D | null>(null);
     const pillarLeftMeshes = useRef<THREE.Mesh[]>([]);
-    const basePositionLeft = useRef<THREE.Vector3 | null>(null);
-    const riseDirectionLeft = useRef<THREE.Vector3 | null>(null);
+    const baseQuatLeft = useRef<THREE.Quaternion | null>(null);
     const hoveredLeft = useRef(false);
 
     const raycaster = useRef(new THREE.Raycaster());
@@ -31,7 +29,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const { gl } = useThree();
     const invalidate = useThree((state) => state.invalidate);
 
-    // Find pillar objects and compute rise directions
+    // Find pillar objects and store base rotations
     useEffect(() => {
         scene.updateMatrixWorld(true);
 
@@ -39,13 +37,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         const pillarRight = scene.getObjectByName("Pillar_Right");
         if (pillarRight) {
             pillarRightRef.current = pillarRight;
-            basePositionRight.current = pillarRight.position.clone();
-
-            const worldQuat = new THREE.Quaternion();
-            pillarRight.getWorldQuaternion(worldQuat);
-            const axis = new THREE.Vector3(0, 1, 0);
-            axis.applyQuaternion(worldQuat).normalize();
-            riseDirectionRight.current = axis;
+            baseQuatRight.current = pillarRight.quaternion.clone();
 
             const meshes: THREE.Mesh[] = [];
             pillarRight.traverse((child) => {
@@ -58,13 +50,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         const pillarLeft = scene.getObjectByName("Pillar_Left");
         if (pillarLeft) {
             pillarLeftRef.current = pillarLeft;
-            basePositionLeft.current = pillarLeft.position.clone();
-
-            const worldQuat = new THREE.Quaternion();
-            pillarLeft.getWorldQuaternion(worldQuat);
-            const axis = new THREE.Vector3(0, 1, 0);
-            axis.applyQuaternion(worldQuat).normalize();
-            riseDirectionLeft.current = axis;
+            baseQuatLeft.current = pillarLeft.quaternion.clone();
 
             const meshes: THREE.Mesh[] = [];
             pillarLeft.traverse((child) => {
@@ -89,12 +75,17 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         return () => canvas.removeEventListener("pointermove", onPointerMove);
     }, [gl, invalidate]);
 
-    // Pre-allocated target position — reused every frame to avoid GC pressure
-    const targetPos = useRef(new THREE.Vector3());
+    // Pre-allocated objects — reused every frame to avoid GC pressure
+    const tiltQuat = useRef(new THREE.Quaternion());
+    const tiltAxis = useRef(new THREE.Vector3());
+    const camWorldPos = useRef(new THREE.Vector3());
+    const pillarWorldPos = useRef(new THREE.Vector3());
+    const targetQuat = useRef(new THREE.Quaternion());
 
-    // Check hover and animate both pillars
+    // Check hover and animate both pillars with tilt
     useFrame((state) => {
         raycaster.current.setFromCamera(pointer.current, state.camera);
+        state.camera.getWorldPosition(camWorldPos.current);
 
         // Pillar Right
         const rightMeshes = pillarRightMeshes.current;
@@ -107,14 +98,22 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         }
 
         const pillarR = pillarRightRef.current;
-        const basePosR = basePositionRight.current;
-        const dirR = riseDirectionRight.current;
-        if (pillarR && basePosR && dirR) {
-            targetPos.current.copy(basePosR);
+        const baseQR = baseQuatRight.current;
+        if (pillarR && baseQR) {
             if (hoveredRight.current) {
-                targetPos.current.addScaledVector(dirR, RISE_DISTANCE);
+                // Compute tilt axis: cross product of pillar's up and direction to camera
+                pillarR.getWorldPosition(pillarWorldPos.current);
+                tiltAxis.current
+                    .subVectors(camWorldPos.current, pillarWorldPos.current)
+                    .normalize();
+                // Tilt axis is perpendicular to both the up vector and the direction to camera
+                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltQuat.current.setFromAxisAngle(tiltAxis.current, -TILT_ANGLE);
+                targetQuat.current.copy(baseQR).premultiply(tiltQuat.current);
+            } else {
+                targetQuat.current.copy(baseQR);
             }
-            pillarR.position.lerp(targetPos.current, LERP_SPEED);
+            pillarR.quaternion.slerp(targetQuat.current, LERP_SPEED);
         }
 
         // Pillar Left
@@ -128,14 +127,20 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         }
 
         const pillarL = pillarLeftRef.current;
-        const basePosL = basePositionLeft.current;
-        const dirL = riseDirectionLeft.current;
-        if (pillarL && basePosL && dirL) {
-            targetPos.current.copy(basePosL);
+        const baseQL = baseQuatLeft.current;
+        if (pillarL && baseQL) {
             if (hoveredLeft.current) {
-                targetPos.current.addScaledVector(dirL, RISE_DISTANCE);
+                pillarL.getWorldPosition(pillarWorldPos.current);
+                tiltAxis.current
+                    .subVectors(camWorldPos.current, pillarWorldPos.current)
+                    .normalize();
+                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltQuat.current.setFromAxisAngle(tiltAxis.current, -TILT_ANGLE);
+                targetQuat.current.copy(baseQL).premultiply(tiltQuat.current);
+            } else {
+                targetQuat.current.copy(baseQL);
             }
-            pillarL.position.lerp(targetPos.current, LERP_SPEED);
+            pillarL.quaternion.slerp(targetQuat.current, LERP_SPEED);
         }
 
         // Invalidate to request next frame (demand mode)
