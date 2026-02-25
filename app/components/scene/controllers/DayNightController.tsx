@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree, useLoader } from "@react-three/fiber";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // ── Day preset ──
 const DAY_AMBIENT_INTENSITY = 0.1;

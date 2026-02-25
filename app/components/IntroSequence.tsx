@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import useStore from "./store";
+import useStore from "../lib/store";
 
 // ── Intro boot sequence that plays while models load ──
 // Shows hacker-style initialization lines, then slides open "bunker doors".

@@ -6,7 +6,7 @@ import {
     IoVolumeHighOutline,
     IoVolumeMuteOutline,
 } from "react-icons/io5";
-import useStore from "./store";
+import useStore from "../lib/store";
 
 // Fade-out delay (ms) after closing the panel before the button goes translucent
 const FADE_DELAY = 600;

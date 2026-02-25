@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -181,8 +181,7 @@ export default function RockAnimation({ scene }: RockAnimationProps) {
 
                     if (dist < REPEL_RADIUS_3D && dist > 0.001) {
                         const falloff = 1 - dist / REPEL_RADIUS_3D;
-                        const pushDist =
-                            REPEL_STRENGTH_3D * falloff * falloff;
+                        const pushDist = REPEL_STRENGTH_3D * falloff * falloff;
 
                         tempVec.current.normalize();
                         targetPos.current.addScaledVector(
@@ -200,7 +199,8 @@ export default function RockAnimation({ scene }: RockAnimationProps) {
 
                 if (screenDist < REPEL_RADIUS && screenDist > 0.001) {
                     const falloff = 1 - screenDist / REPEL_RADIUS;
-                    const pushDist = repelStrengthRef.current * falloff * falloff;
+                    const pushDist =
+                        repelStrengthRef.current * falloff * falloff;
 
                     // Normalize screen direction and convert to world push
                     const invDist = 1 / screenDist;

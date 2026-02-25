@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import useStore from "./store";
+import useStore from "../lib/store";
+import { scrambleReveal, glitchReveal } from "../lib/textEffects";
 
 // ── Night/day color helpers ──
 function useNightColors() {
@@ -26,23 +27,22 @@ function useNightColors() {
 const PILLAR_CONFIG = {
     left: {
         label: "BLOG",
-        // Line starts near left-third of screen, ends near center
+        // Line starts near left-third of screen, ends at center
         startX: "25%",
         startY: "55%",
-        endX: "42%",
-        endY: "45%",
+        endX: "45%",
+        endY: "50%",
     },
     right: {
         label: "EXPERIENCE",
         startX: "75%",
         startY: "55%",
-        endX: "58%",
-        endY: "45%",
+        endX: "55%",
+        endY: "50%",
     },
 } as const;
 
-// Scramble constants (reuse same pool as ScrambleTitle)
-const GLYPH_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*!?<>+=";
+// Scramble constants
 const SCRAMBLE_INTERVAL = 35;
 const SCRAMBLE_CYCLES = 6;
 const CHAR_STAGGER = 80;
@@ -53,6 +53,9 @@ const LINE_DRAW_MS = 300;
 const TEXT_DELAY_MS = 100;
 // Fade-out duration (ms)
 const FADE_OUT_MS = 250;
+// Glitch animation duration for // SECTION tag (ms)
+const GLITCH_DURATION_MS = 400;
+const GLITCH_STEPS = 8;
 
 export default function PillarTooltip() {
     const hoveredPillar = useStore((s) => s.hoveredPillar);
@@ -78,6 +81,9 @@ export default function PillarTooltip() {
     const [display, setDisplay] = useState<string[]>([]);
     const [textDone, setTextDone] = useState(false);
     const [fadingOut, setFadingOut] = useState(false);
+    // Glitch state for "// SECTION" tag
+    const [sectionDisplay, setSectionDisplay] = useState("");
+    const [sectionGlitchDone, setSectionGlitchDone] = useState(false);
 
     const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
     const rafRef = useRef<number>(0);
@@ -102,6 +108,8 @@ export default function PillarTooltip() {
             setActivePillar(target);
             setLineProgress(0);
             setTextDone(false);
+            setSectionDisplay("");
+            setSectionGlitchDone(false);
 
             const config = PILLAR_CONFIG[target];
             const label = config.label;
@@ -134,6 +142,8 @@ export default function PillarTooltip() {
                 setDisplay([]);
                 setTextDone(false);
                 setFadingOut(false);
+                setSectionDisplay("");
+                setSectionGlitchDone(false);
             }, FADE_OUT_MS);
             timersRef.current.push(t);
         }
@@ -145,51 +155,30 @@ export default function PillarTooltip() {
 
     // ── Scramble-reveal the label text ──
     const startScramble = (label: string) => {
-        const chars = label.split("");
-        const timers: ReturnType<typeof setTimeout>[] = [];
-
-        chars.forEach((targetChar, charIndex) => {
-            if (targetChar === " ") {
-                const t = setTimeout(() => {
-                    setDisplay((prev) => {
-                        const next = [...prev];
-                        next[charIndex] = " ";
-                        return next;
-                    });
-                }, charIndex * CHAR_STAGGER);
-                timers.push(t);
-                return;
-            }
-
-            for (let cycle = 0; cycle <= SCRAMBLE_CYCLES; cycle++) {
-                const delay =
-                    charIndex * CHAR_STAGGER + cycle * SCRAMBLE_INTERVAL;
-                const t = setTimeout(() => {
-                    setDisplay((prev) => {
-                        const next = [...prev];
-                        if (cycle === SCRAMBLE_CYCLES) {
-                            next[charIndex] = targetChar;
-                        } else {
-                            next[charIndex] =
-                                GLYPH_POOL[
-                                    Math.floor(
-                                        Math.random() * GLYPH_POOL.length,
-                                    )
-                                ];
-                        }
-                        return next;
-                    });
-                }, delay);
-                timers.push(t);
-            }
+        const { timers } = scrambleReveal({
+            text: label,
+            setDisplay,
+            interval: SCRAMBLE_INTERVAL,
+            cycles: SCRAMBLE_CYCLES,
+            stagger: CHAR_STAGGER,
+            onComplete: () => {
+                setTextDone(true);
+                startSectionGlitch();
+            },
         });
 
-        const totalTime =
-            (chars.length - 1) * CHAR_STAGGER +
-            SCRAMBLE_CYCLES * SCRAMBLE_INTERVAL +
-            50;
-        const doneTimer = setTimeout(() => setTextDone(true), totalTime);
-        timers.push(doneTimer);
+        timersRef.current.push(...timers);
+    };
+
+    // ── Glitch-reveal the "// SECTION" tag ──
+    const startSectionGlitch = () => {
+        const { timers } = glitchReveal({
+            text: "// SECTION",
+            setDisplay: setSectionDisplay,
+            duration: GLITCH_DURATION_MS,
+            steps: GLITCH_STEPS,
+            onComplete: () => setSectionGlitchDone(true),
+        });
 
         timersRef.current.push(...timers);
     };
@@ -212,38 +201,34 @@ export default function PillarTooltip() {
                 transition: `opacity ${FADE_OUT_MS}ms ease-out`,
             }}
         >
-            {/* Analysis line (SVG) */}
-            <svg
-                className="absolute inset-0 w-full h-full"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-            >
+            {/* Analysis line (SVG) — no viewBox so percentages map 1:1 to viewport */}
+            <svg className="absolute inset-0 w-full h-full">
                 {/* Line from pillar to label */}
                 <line
-                    x1={parseFloat(config.startX)}
-                    y1={parseFloat(config.startY)}
-                    x2={
+                    x1={config.startX}
+                    y1={config.startY}
+                    x2={`${
                         parseFloat(config.startX) +
                         (parseFloat(config.endX) - parseFloat(config.startX)) *
                             lineProgress
-                    }
-                    y2={
+                    }%`}
+                    y2={`${
                         parseFloat(config.startY) +
                         (parseFloat(config.endY) - parseFloat(config.startY)) *
                             lineProgress
-                    }
+                    }%`}
                     stroke={lineStroke}
-                    strokeWidth="0.12"
+                    strokeWidth="1.5"
                     strokeLinecap="round"
                 />
                 {/* Small circle at the start (pillar anchor) */}
                 <circle
-                    cx={parseFloat(config.startX)}
-                    cy={parseFloat(config.startY)}
-                    r="0.3"
+                    cx={config.startX}
+                    cy={config.startY}
+                    r="4"
                     fill="none"
                     stroke={circleStroke}
-                    strokeWidth="0.1"
+                    strokeWidth="1"
                     style={{
                         opacity: lineProgress > 0 ? 1 : 0,
                     }}
@@ -251,42 +236,36 @@ export default function PillarTooltip() {
                 {/* Dot at end of line */}
                 {lineProgress >= 1 && (
                     <circle
-                        cx={parseFloat(config.endX)}
-                        cy={parseFloat(config.endY)}
-                        r="0.2"
+                        cx={config.endX}
+                        cy={config.endY}
+                        r="3"
                         fill={dotFill}
                     />
                 )}
             </svg>
 
-            {/* Label text — positioned at the end of the line */}
+            {/* Label text — positioned beside the arrow tip */}
             {lineProgress >= 1 && (
                 <div
                     className="absolute"
                     style={{
                         left: config.endX,
                         top: config.endY,
+                        // Blog (left pillar): text to the right of dot
+                        // Experience (right pillar): text to the left of dot
                         transform: isLeft
-                            ? "translate(-100%, -140%)"
-                            : "translate(0%, -140%)",
+                            ? "translate(clamp(8px, 1vw, 16px), -50%)"
+                            : "translate(calc(-100% - clamp(8px, 1vw, 16px)), -50%)",
+                        textAlign: isLeft ? "left" : "right",
                     }}
                 >
-                    {/* Thin horizontal accent line above text */}
-                    <div
-                        style={{
-                            width: "100%",
-                            height: "1px",
-                            background: accentLine,
-                            marginBottom: "6px",
-                        }}
-                    />
                     <span
                         className="select-none whitespace-nowrap"
                         style={{
                             fontFamily:
                                 "var(--font-open-sans), 'Avenir', sans-serif",
-                            fontSize: "1rem",
-                            letterSpacing: "8px",
+                            fontSize: "clamp(0.875rem, 2.5vw, 1.875rem)",
+                            letterSpacing: "clamp(6px, 1.5vw, 16px)",
                             color: textColor,
                             transition: "color 600ms ease-in-out",
                         }}
@@ -308,20 +287,40 @@ export default function PillarTooltip() {
                             </span>
                         ))}
                     </span>
-                    {/* Subtle category tag beneath */}
-                    {textDone && (
-                        <div
-                            style={{
-                                marginTop: "4px",
-                                fontSize: "0.6rem",
-                                letterSpacing: "3px",
-                                color: tagColor,
-                                fontFamily: "var(--font-geist-mono), monospace",
-                            }}
-                        >
-                            {isLeft ? "// SECTION" : "// SECTION"}
-                        </div>
-                    )}
+                    {/* Pre-reserved space for // SECTION tag so it doesn't push text */}
+                    <div
+                        style={{
+                            marginTop: "clamp(3px, 0.5vw, 6px)",
+                            fontSize: "clamp(0.5rem, 1vw, 0.75rem)",
+                            letterSpacing: "clamp(2px, 0.5vw, 4px)",
+                            fontFamily: "var(--font-geist-mono), monospace",
+                            height: "1.2em",
+                            overflow: "hidden",
+                            // Compensate for the main text's trailing letter-spacing
+                            // so SECTION aligns flush with the last visible character
+                            paddingRight: isLeft
+                                ? undefined
+                                : "clamp(6px, 1.5vw, 16px)",
+                            paddingLeft: isLeft
+                                ? "clamp(6px, 1.5vw, 16px)"
+                                : undefined,
+                        }}
+                    >
+                        {textDone && (
+                            <span
+                                style={{
+                                    color: sectionGlitchDone
+                                        ? tagColor
+                                        : scrambleColor,
+                                    transition: sectionGlitchDone
+                                        ? "color 200ms"
+                                        : "none",
+                                }}
+                            >
+                                {sectionDisplay || "\u00A0"}
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

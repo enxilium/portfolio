@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import useStore from "./store";
+import useStore from "../lib/store";
 
 // ── Stargate Activation Overlay ──
 // When the user holds LMB in default view:
@@ -47,6 +47,8 @@ export default function StargateActivation({
     onTransitionComplete,
 }: StargateActivationProps) {
     const freeView = useStore((s) => s.freeView);
+    const hoveredPillar = useStore((s) => s.hoveredPillar);
+    const focusedPillar = useStore((s) => s.focusedPillar);
     // Activation progress 0..1
     const [progress, setProgress] = useState(0);
     // Whether we've hit the climax and should flash
@@ -73,6 +75,8 @@ export default function StargateActivation({
     const handleMouseDown = useCallback(
         (e: MouseEvent) => {
             if (e.button !== 0 || freeView || transitioned) return;
+            // Don't activate stargate while interacting with pillars
+            if (hoveredPillar || focusedPillar) return;
             // Only register hold on the canvas — ignore clicks on UI elements
             const target = e.target as HTMLElement;
             if (target.closest("button, input, label, [role='button'], .z-50"))
@@ -81,7 +85,7 @@ export default function StargateActivation({
             startTimeRef.current =
                 performance.now() - progressRef.current * ACTIVATION_DURATION;
         },
-        [freeView, transitioned],
+        [freeView, transitioned, hoveredPillar, focusedPillar],
     );
 
     const handleMouseUp = useCallback((e: MouseEvent) => {

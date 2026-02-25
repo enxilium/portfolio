@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // How far the pillar tilts toward the camera (in radians)
 const TILT_ANGLE = 0.1;
@@ -190,6 +190,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         if (currentHover !== lastHoverEmitted.current) {
             lastHoverEmitted.current = currentHover;
             useStore.getState().setHoveredPillar(currentHover);
+            document.body.style.cursor = currentHover ? "pointer" : "auto";
         }
 
         // Invalidate to request next frame (demand mode)

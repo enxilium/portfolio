@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // ── Flash light ──
 // Point light placed high in the scene for ambient illumination flash

@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // Max rotation offset (radians) for mouse-follow panning
 const PAN_AMOUNT = 0.03;

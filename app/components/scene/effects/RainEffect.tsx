@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // ── Rain config ──
 // Lower count = lighter, less particly rain

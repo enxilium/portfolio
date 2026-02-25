@@ -5,21 +5,22 @@ import { useRef, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Environment, Stars, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import CameraController from "./CameraController";
-import PillarAnimation from "./PillarAnimation";
-import RockAnimation from "./RockAnimation";
-import StargateAnimation from "./StargateAnimation";
-import DayNightController from "./DayNightController";
-import RainEffect from "./RainEffect";
-import LightningEffect from "./LightningEffect";
-import ControlPanel from "./ControlPanel";
-import AudioManager from "./AudioManager";
-import OnboardingOverlay from "./OnboardingOverlay";
-import IntroSequence from "./IntroSequence";
-import ScrambleTitle from "./ScrambleTitle";
-import StargateActivation from "./StargateActivation";
-import PostStargateScene from "./PostStargateScene";
-import PillarTooltip from "./PillarTooltip";
+import CameraController from "./components/scene/controllers/CameraController";
+import PillarAnimation from "./components/scene/animations/PillarAnimation";
+import RockAnimation from "./components/scene/animations/RockAnimation";
+import StargateAnimation from "./components/scene/animations/StargateAnimation";
+import DayNightController from "./components/scene/controllers/DayNightController";
+import RainEffect from "./components/scene/effects/RainEffect";
+import LightningEffect from "./components/scene/effects/LightningEffect";
+import ControlPanel from "./components/ControlPanel";
+import AudioManager from "./lib/AudioManager";
+import OnboardingOverlay from "./components/OnboardingOverlay";
+import IntroSequence from "./components/IntroSequence";
+import ScrambleTitle from "./components/ScrambleTitle";
+import StargateActivation from "./components/StargateActivation";
+import PostStargateScene from "./components/PostStargateScene";
+import PillarTooltip from "./components/PillarTooltip";
+import useStore from "./lib/store";
 
 // Pre-configure the Draco decoder for compressed GLB files
 useGLTF.setDecoderPath(
@@ -93,7 +94,6 @@ function SceneContent() {
         // useGLTF suspends until loaded — if we reach here, the scene is ready
         // Schedule after render to avoid setState-during-render
         setTimeout(() => {
-            const { default: useStore } = require("./store");
             useStore.getState().setSceneReady(true);
         }, 0);
     }
@@ -149,8 +149,6 @@ function SceneContent() {
 
 // ── Orchestrator: reads store to conditionally render overlays ──
 function Overlays() {
-    // Lazy-import store so it doesn't touch the page default export
-    const useStore = require("./store").default;
     const introComplete = useStore(
         (s: { introComplete: boolean }) => s.introComplete,
     );
@@ -186,7 +184,6 @@ function Overlays() {
 
 // ── Intro wrapper: reads store for sceneReady ──
 function IntroWrapper() {
-    const useStore = require("./store").default;
     const introComplete = useStore(
         (s: { introComplete: boolean }) => s.introComplete,
     );

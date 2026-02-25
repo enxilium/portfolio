@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import useStore from "./store";
+import useStore from "../lib/store";
 
 // ── Onboarding phase state machine ──
 // PRESS_F       → user lands on page, sees "Press F to freelook"

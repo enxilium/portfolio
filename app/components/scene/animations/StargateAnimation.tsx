@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import useStore from "./store";
+import useStore from "../../../lib/store";
 
 // Base rotation speed in radians per second
 const BASE_ROTATION_SPEED = 0.1;
