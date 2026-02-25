@@ -239,6 +239,8 @@ export default function OnboardingOverlay() {
         };
     }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const focusedPillar = useStore((s) => s.focusedPillar);
+
     if (phase === "DONE") return null;
 
     return (
@@ -246,7 +248,7 @@ export default function OnboardingOverlay() {
             <div
                 className="transition-opacity"
                 style={{
-                    opacity: show ? 1 : 0,
+                    opacity: show && !focusedPillar ? 1 : 0,
                     transitionDuration: `${FADE_MS}ms`,
                 }}
             >

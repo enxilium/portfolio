@@ -1,0 +1,123 @@
+/* ── Public content styles for rendered Tiptap HTML ── */
+
+.content-body {
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--font-open-sans), sans-serif;
+    font-size: 1rem;
+    line-height: 1.8;
+}
+
+.content-body h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 2rem 0 1rem;
+    line-height: 1.3;
+    color: #fff;
+}
+
+.content-body h2 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.75rem;
+    line-height: 1.3;
+    color: #fff;
+}
+
+.content-body h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.5rem;
+    line-height: 1.3;
+    color: #fff;
+}
+
+.content-body p {
+    margin: 0.75rem 0;
+}
+
+.content-body ul,
+.content-body ol {
+    padding-left: 1.75rem;
+    margin: 0.75rem 0;
+}
+
+.content-body ul {
+    list-style: disc;
+}
+
+.content-body ol {
+    list-style: decimal;
+}
+
+.content-body li {
+    margin: 0.35rem 0;
+}
+
+.content-body blockquote {
+    border-left: 3px solid rgba(255, 255, 255, 0.2);
+    padding-left: 1.25rem;
+    margin: 1rem 0;
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+}
+
+.content-body pre {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.content-body code {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 0.25rem;
+    padding: 0.15rem 0.4rem;
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.875em;
+}
+
+.content-body pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+}
+
+.content-body a {
+    color: #6cb4ee;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 150ms;
+}
+
+.content-body a:hover {
+    color: #93cbf6;
+}
+
+.content-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    margin: 1.25rem 0;
+}
+
+.content-body hr {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 2rem 0;
+}
+
+.content-body iframe {
+    max-width: 100%;
+    border-radius: 0.5rem;
+    margin: 1.25rem 0;
+}
+
+.content-body strong {
+    color: #fff;
+    font-weight: 600;
+}

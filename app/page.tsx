@@ -20,6 +20,7 @@ import ScrambleTitle from "./components/ScrambleTitle";
 import StargateActivation from "./components/StargateActivation";
 import PostStargateScene from "./components/PostStargateScene";
 import PillarTooltip from "./components/PillarTooltip";
+import PillarContent from "./components/PillarContent";
 import useStore from "./lib/store";
 
 // Pre-configure the Draco decoder for compressed GLB files
@@ -89,6 +90,7 @@ function SceneContent() {
 
     // Signal scene readiness to the store on mount
     const readyFired = useRef(false);
+    // eslint-disable-next-line react-hooks/refs
     if (!readyFired.current) {
         readyFired.current = true;
         // useGLTF suspends until loaded — if we reach here, the scene is ready
@@ -166,6 +168,9 @@ function Overlays() {
 
             {/* Detroit-style pillar hover tooltips */}
             {introComplete && !sceneTransitioned && <PillarTooltip />}
+
+            {/* Pillar content carousel (focused pillar view) */}
+            {introComplete && !sceneTransitioned && <PillarContent />}
 
             {/* Stargate activation overlay (dust, shake, glow, flash) */}
             {introComplete && !sceneTransitioned && (

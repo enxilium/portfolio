@@ -31,6 +31,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const invalidate = useThree((state) => state.invalidate);
     // Track last emitted hover state to avoid spamming the store
     const lastHoverEmitted = useRef<"left" | "right" | null>(null);
+    const lastFocusedEmitted = useRef<"left" | "right" | null>(null);
     const focusedPillar = useStore((s) => s.focusedPillar);
 
     // Find pillar objects and store base rotations
@@ -187,10 +188,16 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             : hoveredRight.current
               ? "right"
               : null;
-        if (currentHover !== lastHoverEmitted.current) {
+        if (
+            currentHover !== lastHoverEmitted.current ||
+            focused !== lastFocusedEmitted.current
+        ) {
             lastHoverEmitted.current = currentHover;
+            lastFocusedEmitted.current = focused;
             useStore.getState().setHoveredPillar(currentHover);
-            document.body.style.cursor = currentHover ? "pointer" : "auto";
+            // Only show pointer cursor in the default view (no pillar focused)
+            document.body.style.cursor =
+                currentHover && !focused ? "pointer" : "auto";
         }
 
         // Invalidate to request next frame (demand mode)
