@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import useStore from "./store";
 
 // How far the pillar tilts toward the camera (in radians)
 const TILT_ANGLE = 0.1;
@@ -28,6 +29,9 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const pointer = useRef(new THREE.Vector2());
     const { gl } = useThree();
     const invalidate = useThree((state) => state.invalidate);
+    // Track last emitted hover state to avoid spamming the store
+    const lastHoverEmitted = useRef<"left" | "right" | null>(null);
+    const focusedPillar = useStore((s) => s.focusedPillar);
 
     // Find pillar objects and store base rotations
     useEffect(() => {
@@ -75,6 +79,29 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         return () => canvas.removeEventListener("pointermove", onPointerMove);
     }, [gl, invalidate]);
 
+    // Click handler: focus camera on clicked pillar
+    useEffect(() => {
+        const canvas = gl.domElement;
+
+        const onClick = () => {
+            // If already focused, clicking again returns to default view
+            const store = useStore.getState();
+            if (store.focusedPillar) {
+                store.setFocusedPillar(null);
+                return;
+            }
+            // Check which pillar (if any) is hovered
+            if (hoveredLeft.current) {
+                store.setFocusedPillar("left");
+            } else if (hoveredRight.current) {
+                store.setFocusedPillar("right");
+            }
+        };
+
+        canvas.addEventListener("click", onClick);
+        return () => canvas.removeEventListener("click", onClick);
+    }, [gl]);
+
     // Pre-allocated objects — reused every frame to avoid GC pressure
     const tiltQuat = useRef(new THREE.Quaternion());
     const tiltAxis = useRef(new THREE.Vector3());
@@ -108,7 +135,10 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                     .normalize();
                 // Tilt axis is perpendicular to both the up vector and the direction to camera
                 tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
-                tiltQuat.current.setFromAxisAngle(tiltAxis.current, -TILT_ANGLE);
+                tiltQuat.current.setFromAxisAngle(
+                    tiltAxis.current,
+                    -TILT_ANGLE,
+                );
                 targetQuat.current.copy(baseQR).premultiply(tiltQuat.current);
             } else {
                 targetQuat.current.copy(baseQR);
@@ -135,12 +165,31 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                     .subVectors(camWorldPos.current, pillarWorldPos.current)
                     .normalize();
                 tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
-                tiltQuat.current.setFromAxisAngle(tiltAxis.current, -TILT_ANGLE);
+                tiltQuat.current.setFromAxisAngle(
+                    tiltAxis.current,
+                    -TILT_ANGLE,
+                );
                 targetQuat.current.copy(baseQL).premultiply(tiltQuat.current);
             } else {
                 targetQuat.current.copy(baseQL);
             }
             pillarL.quaternion.slerp(targetQuat.current, LERP_SPEED);
+        }
+
+        // ── Force hover active when pillar is focused ──
+        const focused = focusedPillar;
+        if (focused === "left") hoveredLeft.current = true;
+        if (focused === "right") hoveredRight.current = true;
+
+        // ── Emit hover state to the store ──
+        const currentHover: "left" | "right" | null = hoveredLeft.current
+            ? "left"
+            : hoveredRight.current
+              ? "right"
+              : null;
+        if (currentHover !== lastHoverEmitted.current) {
+            lastHoverEmitted.current = currentHover;
+            useStore.getState().setHoveredPillar(currentHover);
         }
 
         // Invalidate to request next frame (demand mode)

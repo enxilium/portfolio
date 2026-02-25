@@ -1,20 +1,61 @@
 "use client";
 
 import * as THREE from "three";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-
-const isDev = process.env.NODE_ENV === "development";
+import useStore from "./store";
 
 // Max rotation offset (radians) for mouse-follow panning
 const PAN_AMOUNT = 0.03;
 // Zoom range: -1 = max zoom out, 0 = base (Blender camera), 1 = max zoom in
-const ZOOM_IN_FOV_FACTOR = 0.5;  // at max zoom-in, FOV = baseFOV * 0.5
+const ZOOM_IN_FOV_FACTOR = 0.5; // at max zoom-in, FOV = baseFOV * 0.5
 const ZOOM_OUT_FOV_FACTOR = 1.4; // at max zoom-out, FOV = baseFOV * 1.4
 const ZOOM_SENSITIVITY = 0.0015; // scroll sensitivity
-const PAN_ZOOM_MULTIPLIER = 3;   // at max zoom, pan amount is multiplied by this
+const PAN_ZOOM_MULTIPLIER = 3; // at max zoom, pan amount is multiplied by this
+
+// Smoothing factor for camera return transition (higher = faster)
+const RETURN_LERP_FACTOR = 0.05;
+// Threshold below which we consider the camera "arrived" at the base state
+const RETURN_THRESHOLD = 0.001;
+
+// Smoothing factor for pillar focus transitions
+const FOCUS_LERP_FACTOR = 0.04;
+// Threshold below which we consider pillar focus transition complete
+const FOCUS_THRESHOLD = 0.01;
+
+// Camera targets when focused on each pillar (captured from free-view)
+const PILLAR_FOCUS = {
+    left: {
+        position: new THREE.Vector3(
+            -32.46085307117368,
+            7.700729158659538,
+            -48.44703406077957,
+        ),
+        quaternion: new THREE.Quaternion(
+            -0.045919588276593926,
+            -0.41075282465792323,
+            -0.020718975869243785,
+            0.910353905075919,
+        ),
+        fov: 22.39941157626373,
+    },
+    right: {
+        position: new THREE.Vector3(
+            23.725313675202692,
+            1.4904973660855205,
+            -40.86229859862971,
+        ),
+        quaternion: new THREE.Quaternion(
+            0.050045628119405286,
+            0.36597066442481785,
+            -0.019713497174963058,
+            0.9290706571169516,
+        ),
+        fov: 22.39941157626373,
+    },
+} as const;
 
 interface BaseState {
     position: THREE.Vector3;
@@ -55,7 +96,10 @@ export default function CameraController({
         }
     };
 
-    const [freeView, setFreeView] = useState(false);
+    const freeView = useStore((s) => s.freeView);
+    const setFreeView = useStore((s) => s.setFreeView);
+    const setIsDragging = useStore((s) => s.setIsDragging);
+    const focusedPillar = useStore((s) => s.focusedPillar);
 
     // Store base camera state from Blender
     const baseState = useRef<BaseState | null>(null);
@@ -64,6 +108,10 @@ export default function CameraController({
     const mouse = useRef({ x: 0, y: 0 });
     // Current zoom level [-1 = max zoom out, 0 = base, 1 = max zoom in]
     const zoom = useRef(0);
+    // Whether we are smoothly transitioning back from free view to base state
+    const returning = useRef(false);
+    // Track previous focusedPillar to detect transitions
+    const prevFocused = useRef<"left" | "right" | null>(null);
 
     // Extract Blender camera on mount
     useEffect(() => {
@@ -88,7 +136,9 @@ export default function CameraController({
             const distToCenter = worldPos.distanceTo(sceneCenter);
             // Use distance to scene center, fall back to 10 if scene is empty
             const targetDist = distToCenter > 0.1 ? distToCenter : 10;
-            const target = worldPos.clone().add(lookDir.multiplyScalar(targetDist));
+            const target = worldPos
+                .clone()
+                .add(lookDir.multiplyScalar(targetDist));
 
             baseState.current = {
                 position: worldPos.clone(),
@@ -100,7 +150,7 @@ export default function CameraController({
             // Apply initial camera
             activeCamera.position.copy(worldPos);
             activeCamera.quaternion.copy(worldQuat);
-            
+
             if (activeCamera instanceof THREE.PerspectiveCamera) {
                 activeCamera.fov = cam.fov;
                 activeCamera.near = cam.near;
@@ -111,48 +161,74 @@ export default function CameraController({
         }
     }, [cameras, size, scene]);
 
-    // Toggle free view with F key (dev only)
+    // Toggle free view with F key, print camera data with P key
     useEffect(() => {
-        if (!isDev) return;
-
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "f" || e.key === "F") {
-                setFreeView((prev) => {
-                    const next = !prev;
-                    const activeCamera = cameraRef.current;
-                    // When exiting free view, restore base camera
-                    if (!next && baseState.current) {
-                        activeCamera.position.copy(baseState.current.position);
-                        activeCamera.quaternion.copy(
-                            baseState.current.quaternion,
-                        );
-                        if (activeCamera instanceof THREE.PerspectiveCamera) {
-                            activeCamera.fov = baseState.current.fov;
-                            activeCamera.aspect = size.width / size.height;
-                            activeCamera.updateProjectionMatrix();
-                        }
-                        zoom.current = 0;
-                    }
-                    // When entering free view, sync OrbitControls target
-                    if (next && controlsRef.current && baseState.current) {
-                        const cam = cameraRef.current;
-                        controlsRef.current.target.copy(
-                            baseState.current.target,
-                        );
-                        controlsRef.current.object.position.copy(cam.position);
-                        controlsRef.current.object.quaternion.copy(cam.quaternion);
-                        controlsRef.current.rotateSpeed = 0.5;
-                        controlsRef.current.zoomSpeed = 0.8;
-                        controlsRef.current.update();
-                    }
-                    return next;
-                });
+                setFreeView(!freeView);
+                // When exiting free view, start smooth return (don't snap)
+                if (freeView && baseState.current) {
+                    returning.current = true;
+                    zoom.current = 0;
+                }
+                // When entering free view, sync OrbitControls target
+                if (!freeView && controlsRef.current && baseState.current) {
+                    const cam = cameraRef.current;
+                    controlsRef.current.target.copy(baseState.current.target);
+                    controlsRef.current.object.position.copy(cam.position);
+                    controlsRef.current.object.quaternion.copy(cam.quaternion);
+                    controlsRef.current.rotateSpeed = 0.5;
+                    controlsRef.current.zoomSpeed = 0.8;
+                    controlsRef.current.update();
+                }
+            }
+
+            // DEV: Print camera position, quaternion, and FOV to console
+            if ((e.key === "p" || e.key === "P") && freeView) {
+                const cam = cameraRef.current;
+                const pos = cam.position;
+                const quat = cam.quaternion;
+                const fov =
+                    cam instanceof THREE.PerspectiveCamera ? cam.fov : "N/A";
+                const target = controlsRef.current?.target;
+                console.log("=== CAMERA DATA ===");
+                console.log(
+                    `Position: { x: ${pos.x}, y: ${pos.y}, z: ${pos.z} }`,
+                );
+                console.log(
+                    `Quaternion: { x: ${quat.x}, y: ${quat.y}, z: ${quat.z}, w: ${quat.w} }`,
+                );
+                console.log(`FOV: ${fov}`);
+                if (target) {
+                    console.log(
+                        `OrbitControls Target: { x: ${target.x}, y: ${target.y}, z: ${target.z} }`,
+                    );
+                }
+                console.log("===================");
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [size]);
+    }, [size, freeView, setFreeView]);
+
+    // Track OrbitControls drag start/end → push to store
+    useEffect(() => {
+        const controls = controlsRef.current;
+        if (!controls || !freeView) return;
+
+        const onStart = () => setIsDragging(true);
+        const onEnd = () => setIsDragging(false);
+
+        controls.addEventListener("start", onStart);
+        controls.addEventListener("end", onEnd);
+
+        return () => {
+            controls.removeEventListener("start", onStart);
+            controls.removeEventListener("end", onEnd);
+            setIsDragging(false);
+        };
+    }, [freeView, setIsDragging]);
 
     // Mouse tracking for default mode
     useEffect(() => {
@@ -186,14 +262,87 @@ export default function CameraController({
     const offsetQuat = useRef(new THREE.Quaternion());
     const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
     const targetQuat = useRef(new THREE.Quaternion());
+    const focusTargetPos = useRef(new THREE.Vector3());
+    const focusTargetQuat = useRef(new THREE.Quaternion());
 
-    // Animate camera in default mode
+    // Animate camera in default mode (and smooth return from free view)
     useFrame((state) => {
         if (freeView || !baseState.current) return;
         const cam = state.camera;
         if (!(cam instanceof THREE.PerspectiveCamera)) return;
 
         const { position, quaternion, fov } = baseState.current;
+
+        // ── Pillar focus transition ──
+        if (focusedPillar) {
+            const target = PILLAR_FOCUS[focusedPillar];
+            focusTargetPos.current.copy(target.position);
+            focusTargetQuat.current.set(
+                target.quaternion.x,
+                target.quaternion.y,
+                target.quaternion.z,
+                target.quaternion.w,
+            );
+
+            cam.position.lerp(focusTargetPos.current, FOCUS_LERP_FACTOR);
+            cam.quaternion.slerp(focusTargetQuat.current, FOCUS_LERP_FACTOR);
+            cam.fov += (target.fov - cam.fov) * FOCUS_LERP_FACTOR;
+            cam.updateProjectionMatrix();
+
+            prevFocused.current = focusedPillar;
+            state.invalidate();
+            return;
+        }
+
+        // ── Returning from pillar focus → base state ──
+        if (prevFocused.current && !focusedPillar) {
+            cam.position.lerp(position, RETURN_LERP_FACTOR);
+            cam.quaternion.slerp(quaternion, RETURN_LERP_FACTOR);
+            cam.fov += (fov - cam.fov) * RETURN_LERP_FACTOR;
+            cam.updateProjectionMatrix();
+
+            const positionDelta = cam.position.distanceTo(position);
+            const angleDelta = cam.quaternion.angleTo(quaternion);
+            if (
+                positionDelta < FOCUS_THRESHOLD &&
+                angleDelta < FOCUS_THRESHOLD
+            ) {
+                cam.position.copy(position);
+                cam.quaternion.copy(quaternion);
+                cam.fov = fov;
+                cam.updateProjectionMatrix();
+                prevFocused.current = null;
+                zoom.current = 0;
+            }
+
+            state.invalidate();
+            return;
+        }
+
+        // If returning from free view, interpolate back to base state first
+        if (returning.current) {
+            cam.position.lerp(position, RETURN_LERP_FACTOR);
+            cam.quaternion.slerp(quaternion, RETURN_LERP_FACTOR);
+            cam.fov += (fov - cam.fov) * RETURN_LERP_FACTOR;
+            cam.updateProjectionMatrix();
+
+            // Check if we've arrived close enough to the base state
+            const positionDelta = cam.position.distanceTo(position);
+            const angleDelta = cam.quaternion.angleTo(quaternion);
+            if (
+                positionDelta < RETURN_THRESHOLD &&
+                angleDelta < RETURN_THRESHOLD
+            ) {
+                cam.position.copy(position);
+                cam.quaternion.copy(quaternion);
+                cam.fov = fov;
+                cam.updateProjectionMatrix();
+                returning.current = false;
+            }
+
+            state.invalidate();
+            return;
+        }
 
         // Subtle rotation offset based on mouse — scales up with zoom
         const panScale = 1 + Math.abs(zoom.current) * (PAN_ZOOM_MULTIPLIER - 1);
@@ -216,7 +365,8 @@ export default function CameraController({
             targetFov = fov * (1 - zoom.current * (1 - ZOOM_IN_FOV_FACTOR));
         } else {
             // Zoom out: FOV increases from baseFOV toward baseFOV * ZOOM_OUT_FOV_FACTOR
-            targetFov = fov * (1 + Math.abs(zoom.current) * (ZOOM_OUT_FOV_FACTOR - 1));
+            targetFov =
+                fov * (1 + Math.abs(zoom.current) * (ZOOM_OUT_FOV_FACTOR - 1));
         }
         cam.fov += (targetFov - cam.fov) * 0.05;
         cam.updateProjectionMatrix();
@@ -225,5 +375,5 @@ export default function CameraController({
         state.invalidate();
     });
 
-    return isDev && freeView ? <OrbitControls ref={setControlsRef} /> : null;
+    return freeView ? <OrbitControls ref={setControlsRef} /> : null;
 }
