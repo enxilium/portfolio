@@ -1,0 +1,2 @@
+public/scene.glb filter=lfs diff=lfs merge=lfs -text
+public/scene_original.glb filter=lfs diff=lfs merge=lfs -text
