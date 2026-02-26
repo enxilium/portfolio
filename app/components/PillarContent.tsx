@@ -235,7 +235,7 @@ export default function PillarContent() {
             <div
                 className="pointer-events-auto flex flex-col"
                 style={{
-                    width: "min(480px, 42vw)",
+                    width: "min(480px, calc(100vw - 2rem))",
                     padding: "clamp(24px, 4vw, 48px)",
                     marginLeft: isLeft ? "clamp(32px, 6vw, 80px)" : undefined,
                     marginRight: isLeft ? undefined : "clamp(32px, 6vw, 80px)",
@@ -325,7 +325,7 @@ export default function PillarContent() {
                             className="select-none"
                             style={{
                                 fontFamily: "var(--font-geist-mono), monospace",
-                                fontSize: "clamp(0.55rem, 0.9vw, 0.7rem)",
+                                fontSize: "clamp(0.65rem, 0.9vw, 0.7rem)",
                                 letterSpacing: "clamp(1px, 0.3vw, 3px)",
                                 color: mutedColor,
                                 margin: 0,

@@ -233,6 +233,9 @@ export default function StargateActivation({
             {/* Screen shake wrapper — applies to entire viewport via CSS */}
             {progress > 0.1 && (
                 <style>{`
+                    html, body {
+                        overflow: hidden !important;
+                    }
                     .scene-root {
                         transform: translate(${shake.x}px, ${shake.y}px);
                     }

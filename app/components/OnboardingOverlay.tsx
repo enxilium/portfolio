@@ -4,17 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import useStore from "../lib/store";
 
 // ── Onboarding phase state machine ──
-// PRESS_F       → user lands on page, sees "Press F to freelook"
-// DRAG_TO_PAN   → user pressed F, sees "Drag mouse to pan around"
-// DRAGGING      → user is dragging, text fades and stays hidden
-// PRESS_F_BACK  → user stopped dragging, sees "Press F again to switch back"
-// HOLD_LMB      → user returned to normal view, sees "Hold left mouse button to enter"
-// DONE          → user held LMB, overlay dismissed permanently
+// PRESS_F        → user lands on page, sees "Press F to freelook"
+// DRAG_TO_PAN    → user pressed F, sees "Drag mouse to pan around"
+// DRAGGING       → user is dragging, text fades and stays hidden
+// PRESS_F_BACK   → user stopped dragging, sees "Press F again to switch back"
+// CLICK_PILLARS  → user returned to normal view, sees "Click on the pillars to explore"
+// HOLD_LMB       → user clicked both pillars, sees "Hold left mouse button to enter"
+// DONE           → user held LMB, overlay dismissed permanently
 type Phase =
     | "PRESS_F"
     | "DRAG_TO_PAN"
     | "DRAGGING"
     | "PRESS_F_BACK"
+    | "CLICK_PILLARS"
     | "HOLD_LMB"
     | "DONE";
 
@@ -113,6 +115,12 @@ function PhaseContent({ phase }: { phase: Phase }) {
                     Press <Keycap>F</Keycap> again to switch back to normal view
                 </span>
             );
+        case "CLICK_PILLARS":
+            return (
+                <span className="flex items-center gap-2">
+                    Click on the pillars to see more
+                </span>
+            );
         case "HOLD_LMB":
             return (
                 <span className="flex items-center gap-2">
@@ -141,6 +149,8 @@ export default function OnboardingOverlay() {
     const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
         undefined,
     );
+    // Track which pillars the user has clicked on
+    const visitedPillars = useRef<Set<"left" | "right">>(new Set());
 
     // Clear any pending timer
     const clearPending = () => {
@@ -170,24 +180,24 @@ export default function OnboardingOverlay() {
             // freeView toggled OFF
             if (!state.freeView && prevState.freeView) {
                 if (p === "DRAG_TO_PAN") {
-                    // User pressed F back without ever dragging → skip to HOLD_LMB
+                    // User pressed F back without ever dragging → go to CLICK_PILLARS
                     clearPending();
                     setShow(false);
                     timerRef.current = setTimeout(() => {
-                        setPhase("HOLD_LMB");
+                        setPhase("CLICK_PILLARS");
                         setShow(true);
                     }, FADE_MS);
                 } else if (p === "DRAGGING") {
                     // Edge case: exited freeView while dragging
                     clearPending();
-                    setPhase("HOLD_LMB");
+                    setPhase("CLICK_PILLARS");
                     setShow(true);
                 } else if (p === "PRESS_F_BACK") {
-                    // User pressed F to return → cross-fade to HOLD_LMB
+                    // User pressed F to return → cross-fade to CLICK_PILLARS
                     clearPending();
                     setShow(false);
                     timerRef.current = setTimeout(() => {
-                        setPhase("HOLD_LMB");
+                        setPhase("CLICK_PILLARS");
                         setShow(true);
                     }, FADE_MS);
                 }
@@ -210,6 +220,30 @@ export default function OnboardingOverlay() {
                     clearPending();
                     setPhase("PRESS_F_BACK");
                     setShow(true);
+                }
+            }
+
+            // focusedPillar changed — track visited pillars
+            if (
+                state.focusedPillar &&
+                state.focusedPillar !== prevState.focusedPillar
+            ) {
+                visitedPillars.current.add(state.focusedPillar);
+            }
+
+            // When unfocusing a pillar, check if both have been visited
+            if (!state.focusedPillar && prevState.focusedPillar) {
+                if (
+                    p === "CLICK_PILLARS" &&
+                    visitedPillars.current.has("left") &&
+                    visitedPillars.current.has("right")
+                ) {
+                    clearPending();
+                    setShow(false);
+                    timerRef.current = setTimeout(() => {
+                        setPhase("HOLD_LMB");
+                        setShow(true);
+                    }, FADE_MS);
                 }
             }
         });
@@ -244,7 +278,7 @@ export default function OnboardingOverlay() {
     if (phase === "DONE") return null;
 
     return (
-        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-16 sm:bottom-24 z-10 flex justify-center">
             <div
                 className="transition-opacity"
                 style={{
@@ -253,7 +287,7 @@ export default function OnboardingOverlay() {
                 }}
             >
                 <div
-                    className="animate-pulse-opacity text-white text-lg font-medium tracking-wide select-none drop-shadow-lg"
+                    className="animate-pulse-opacity text-white text-sm sm:text-lg font-medium tracking-wide select-none drop-shadow-lg px-4 text-center"
                     style={{ fontFamily: "var(--font-open-sans), sans-serif" }}
                 >
                     <PhaseContent phase={phase} />

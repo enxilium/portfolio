@@ -68,7 +68,7 @@ export default async function ExperiencePage({ params }: PageProps) {
                 </div>
             )}
 
-            <article className="mx-auto max-w-2xl px-6 py-12">
+            <article className="mx-auto max-w-2xl px-4 sm:px-6 py-8 sm:py-12">
                 {/* Back link */}
                 <Link
                     href="/"

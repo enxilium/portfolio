@@ -37,8 +37,10 @@ export default function PostStargateScene() {
                     fontFamily: "var(--font-open-sans), sans-serif",
                 }}
             >
-                <h1 className="text-5xl font-bold text-white mb-4">Welcome</h1>
-                <p className="text-xl text-gray-400">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
+                    Welcome
+                </h1>
+                <p className="text-base sm:text-lg md:text-xl px-6 max-w-xl text-gray-400">
                     You have entered the stargate. This area is still under
                     construction.
                 </p>

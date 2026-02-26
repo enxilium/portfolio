@@ -375,5 +375,7 @@ export default function CameraController({
         state.invalidate();
     });
 
-    return freeView ? <OrbitControls ref={setControlsRef} /> : null;
+    return freeView ? (
+        <OrbitControls ref={setControlsRef} maxDistance={100} />
+    ) : null;
 }

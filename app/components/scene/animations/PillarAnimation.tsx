@@ -25,12 +25,17 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const baseQuatLeft = useRef<THREE.Quaternion | null>(null);
     const hoveredLeft = useRef(false);
 
+    const pillarBackRef = useRef<THREE.Object3D | null>(null);
+    const pillarBackMeshes = useRef<THREE.Mesh[]>([]);
+    const baseQuatBack = useRef<THREE.Quaternion | null>(null);
+    const hoveredBack = useRef(false);
+
     const raycaster = useRef(new THREE.Raycaster());
     const pointer = useRef(new THREE.Vector2());
     const { gl } = useThree();
     const invalidate = useThree((state) => state.invalidate);
     // Track last emitted hover state to avoid spamming the store
-    const lastHoverEmitted = useRef<"left" | "right" | null>(null);
+    const lastHoverEmitted = useRef<"left" | "right" | "back" | null>(null);
     const lastFocusedEmitted = useRef<"left" | "right" | null>(null);
     const focusedPillar = useStore((s) => s.focusedPillar);
 
@@ -63,6 +68,19 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             });
             pillarLeftMeshes.current = meshes;
         }
+
+        // Pillar Back
+        const pillarBack = scene.getObjectByName("Pillar_Back");
+        if (pillarBack) {
+            pillarBackRef.current = pillarBack;
+            baseQuatBack.current = pillarBack.quaternion.clone();
+
+            const meshes: THREE.Mesh[] = [];
+            pillarBack.traverse((child) => {
+                if (child instanceof THREE.Mesh) meshes.push(child);
+            });
+            pillarBackMeshes.current = meshes;
+        }
     }, [scene]);
 
     // Mouse move handler for hover detection
@@ -85,8 +103,10 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         const canvas = gl.domElement;
 
         const onClick = () => {
-            // If already focused, clicking again returns to default view
             const store = useStore.getState();
+            // Don't allow pillar focus in free-look mode
+            if (store.freeView) return;
+            // If already focused, clicking again returns to default view
             if (store.focusedPillar) {
                 store.setFocusedPillar(null);
                 return;
@@ -96,6 +116,9 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 store.setFocusedPillar("left");
             } else if (hoveredRight.current) {
                 store.setFocusedPillar("right");
+            } else if (hoveredBack.current) {
+                // Back pillar opens acknowledgments modal instead of focusing camera
+                store.setAcknowledgmentsOpen(true);
             }
         };
 
@@ -177,17 +200,50 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             pillarL.quaternion.slerp(targetQuat.current, LERP_SPEED);
         }
 
+        // Pillar Back
+        const backMeshes = pillarBackMeshes.current;
+        if (backMeshes.length > 0) {
+            const intersects = raycaster.current.intersectObjects(
+                backMeshes,
+                false,
+            );
+            hoveredBack.current = intersects.length > 0;
+        }
+
+        const pillarB = pillarBackRef.current;
+        const baseQB = baseQuatBack.current;
+        if (pillarB && baseQB) {
+            if (hoveredBack.current) {
+                pillarB.getWorldPosition(pillarWorldPos.current);
+                tiltAxis.current
+                    .subVectors(camWorldPos.current, pillarWorldPos.current)
+                    .normalize();
+                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltQuat.current.setFromAxisAngle(
+                    tiltAxis.current,
+                    -TILT_ANGLE,
+                );
+                targetQuat.current.copy(baseQB).premultiply(tiltQuat.current);
+            } else {
+                targetQuat.current.copy(baseQB);
+            }
+            pillarB.quaternion.slerp(targetQuat.current, LERP_SPEED);
+        }
+
         // ── Force hover active when pillar is focused ──
         const focused = focusedPillar;
         if (focused === "left") hoveredLeft.current = true;
         if (focused === "right") hoveredRight.current = true;
 
         // ── Emit hover state to the store ──
-        const currentHover: "left" | "right" | null = hoveredLeft.current
-            ? "left"
-            : hoveredRight.current
-              ? "right"
-              : null;
+        const currentHover: "left" | "right" | "back" | null =
+            hoveredLeft.current
+                ? "left"
+                : hoveredRight.current
+                  ? "right"
+                  : hoveredBack.current
+                    ? "back"
+                    : null;
         if (
             currentHover !== lastHoverEmitted.current ||
             focused !== lastFocusedEmitted.current

@@ -21,6 +21,7 @@ import StargateActivation from "./components/StargateActivation";
 import PostStargateScene from "./components/PostStargateScene";
 import PillarTooltip from "./components/PillarTooltip";
 import PillarContent from "./components/PillarContent";
+import AcknowledgmentsModal from "./components/AcknowledgmentsModal";
 import useStore from "./lib/store";
 
 // Pre-configure the Draco decoder for compressed GLB files
@@ -172,6 +173,9 @@ function Overlays() {
             {/* Pillar content carousel (focused pillar view) */}
             {introComplete && !sceneTransitioned && <PillarContent />}
 
+            {/* Acknowledgments modal (back pillar click) */}
+            {introComplete && !sceneTransitioned && <AcknowledgmentsModal />}
+
             {/* Stargate activation overlay (dust, shake, glow, flash) */}
             {introComplete && !sceneTransitioned && (
                 <StargateActivation
@@ -185,6 +189,19 @@ function Overlays() {
             {sceneTransitioned && <PostStargateScene />}
         </>
     );
+}
+
+// ── Show control panel only on the main scene ──
+function ControlPanelWrapper() {
+    const introComplete = useStore(
+        (s: { introComplete: boolean }) => s.introComplete,
+    );
+    const sceneTransitioned = useStore(
+        (s: { sceneTransitioned: boolean }) => s.sceneTransitioned,
+    );
+
+    if (!introComplete || sceneTransitioned) return null;
+    return <ControlPanel />;
 }
 
 // ── Intro wrapper: reads store for sceneReady ──
@@ -208,7 +225,7 @@ function IntroWrapper() {
 
 export default function Scene() {
     return (
-        <div className="relative h-screen w-screen overflow-hidden scene-root">
+        <div className="relative h-screen w-full overflow-hidden scene-root">
             <Canvas
                 // Cap pixel ratio at 1.5 for integrated GPUs — visually close to 2x at half the fill cost
                 dpr={[1, 1.5]}
@@ -236,7 +253,7 @@ export default function Scene() {
             <Overlays />
 
             <RainEffect />
-            <ControlPanel />
+            <ControlPanelWrapper />
             <AudioManager />
         </div>
     );
