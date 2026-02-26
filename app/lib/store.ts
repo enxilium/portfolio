@@ -25,9 +25,11 @@ interface SettingsState {
     // Whether audio is muted (persisted to localStorage)
     audioMuted: boolean;
     // Which pillar is currently hovered (null = none)
-    hoveredPillar: "left" | "right" | null;
+    hoveredPillar: "left" | "right" | "back" | null;
     // Which pillar the camera is focused on (null = default view)
     focusedPillar: "left" | "right" | null;
+    // Whether the acknowledgments modal is open
+    acknowledgmentsOpen: boolean;
     // Actions
     setDriftSpeed: (speed: number) => void;
     setRepelStrength: (strength: number) => void;
@@ -41,8 +43,9 @@ interface SettingsState {
     setSceneReady: (v: boolean) => void;
     setBunkerOpen: (v: boolean) => void;
     toggleAudioMuted: () => void;
-    setHoveredPillar: (v: "left" | "right" | null) => void;
+    setHoveredPillar: (v: "left" | "right" | "back" | null) => void;
     setFocusedPillar: (v: "left" | "right" | null) => void;
+    setAcknowledgmentsOpen: (v: boolean) => void;
 }
 
 const useStore = create<SettingsState>((set) => ({
@@ -63,6 +66,7 @@ const useStore = create<SettingsState>((set) => ({
             : true,
     hoveredPillar: null,
     focusedPillar: null,
+    acknowledgmentsOpen: false,
     setDriftSpeed: (speed) => set({ driftSpeed: speed }),
     setRepelStrength: (strength) => set({ repelStrength: strength }),
     toggleNight: () => set((s) => ({ isNight: !s.isNight })),
@@ -82,6 +86,7 @@ const useStore = create<SettingsState>((set) => ({
         }),
     setHoveredPillar: (v) => set({ hoveredPillar: v }),
     setFocusedPillar: (v) => set({ focusedPillar: v }),
+    setAcknowledgmentsOpen: (v) => set({ acknowledgmentsOpen: v }),
 }));
 
 export default useStore;

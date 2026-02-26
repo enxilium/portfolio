@@ -40,6 +40,16 @@ const PILLAR_CONFIG = {
         endX: "55%",
         endY: "50%",
     },
+    back: {
+        label: "ACKNOWLEDGMENTS",
+        // Back pillar is at X=-8.9, Z=-63 in world space — to the right of
+        // Pillar_Left (X=-14, Z=-50) and further from camera. On screen it
+        // appears ~37-38% from the left edge, slightly higher than L/R pillars.
+        startX: "31%",
+        startY: "52%",
+        endX: "38%",
+        endY: "50%",
+    },
 } as const;
 
 // Scramble constants
@@ -61,6 +71,7 @@ export default function PillarTooltip() {
     const hoveredPillar = useStore((s) => s.hoveredPillar);
     const freeView = useStore((s) => s.freeView);
     const focusedPillar = useStore((s) => s.focusedPillar);
+    const acknowledgmentsOpen = useStore((s) => s.acknowledgmentsOpen);
 
     const {
         lineStroke,
@@ -73,9 +84,9 @@ export default function PillarTooltip() {
     } = useNightColors();
 
     // The pillar we're currently animating for (persists through fade-out)
-    const [activePillar, setActivePillar] = useState<"left" | "right" | null>(
-        null,
-    );
+    const [activePillar, setActivePillar] = useState<
+        "left" | "right" | "back" | null
+    >(null);
     // Animation phases
     const [lineProgress, setLineProgress] = useState(0); // 0..1
     const [display, setDisplay] = useState<string[]>([]);
@@ -98,8 +109,11 @@ export default function PillarTooltip() {
 
     // ── React to hover changes ──
     useEffect(() => {
-        // Hide tooltip when focused on a pillar (camera zoomed in)
-        const target = freeView || focusedPillar ? null : hoveredPillar;
+        // Hide tooltip when focused on a pillar (camera zoomed in) or modal open
+        const target =
+            freeView || focusedPillar || acknowledgmentsOpen
+                ? null
+                : hoveredPillar;
 
         if (target && target !== activePillar) {
             // New pillar hovered — start animation
@@ -188,6 +202,7 @@ export default function PillarTooltip() {
     const config = PILLAR_CONFIG[activePillar];
     const label = config.label;
     const isLeft = activePillar === "left";
+    const isBack = activePillar === "back";
 
     // Compute the SVG line endpoints (percentages → viewport pixels via CSS)
     // We'll use an absolutely positioned SVG + absolutely positioned text
@@ -253,10 +268,13 @@ export default function PillarTooltip() {
                         top: config.endY,
                         // Blog (left pillar): text to the right of dot
                         // Experience (right pillar): text to the left of dot
-                        transform: isLeft
+                        // Acknowledgments (back pillar): text to the right of dot
+                        transform: isBack
                             ? "translate(clamp(8px, 1vw, 16px), -50%)"
-                            : "translate(calc(-100% - clamp(8px, 1vw, 16px)), -50%)",
-                        textAlign: isLeft ? "left" : "right",
+                            : isLeft
+                              ? "translate(clamp(8px, 1vw, 16px), -50%)"
+                              : "translate(calc(-100% - clamp(8px, 1vw, 16px)), -50%)",
+                        textAlign: isBack ? "left" : isLeft ? "left" : "right",
                     }}
                 >
                     <span
@@ -298,12 +316,16 @@ export default function PillarTooltip() {
                             overflow: "hidden",
                             // Compensate for the main text's trailing letter-spacing
                             // so SECTION aligns flush with the last visible character
-                            paddingRight: isLeft
+                            paddingRight: isBack
                                 ? undefined
-                                : "clamp(6px, 1.5vw, 16px)",
-                            paddingLeft: isLeft
-                                ? "clamp(6px, 1.5vw, 16px)"
-                                : undefined,
+                                : isLeft
+                                  ? undefined
+                                  : "clamp(6px, 1.5vw, 16px)",
+                            paddingLeft: isBack
+                                ? undefined
+                                : isLeft
+                                  ? "clamp(6px, 1.5vw, 16px)"
+                                  : undefined,
                         }}
                     >
                         {textDone && (

@@ -93,11 +93,11 @@ export default function ScrambleTitle({ active }: ScrambleTitleProps) {
             }}
         >
             <h1
-                className="text-3xl px-8 select-none"
+                className="text-xl sm:text-2xl md:text-3xl px-4 sm:px-8 select-none"
                 style={{
                     fontFamily: "var(--font-open-sans), 'Avenir', sans-serif",
-                    letterSpacing: "30px",
-                    paddingLeft: "30px",
+                    letterSpacing: "clamp(12px, 4vw, 30px)",
+                    paddingLeft: "clamp(12px, 4vw, 30px)",
                     textAlign: "center",
                     color: isNight ? "#ffffff" : "#000000",
                     transition: "color 600ms ease-in-out",

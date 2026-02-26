@@ -151,7 +151,7 @@ export default function IntroSequence({
             >
                 <div
                     ref={terminalRef}
-                    className="max-h-80 overflow-hidden"
+                    className="max-h-60 sm:max-h-80 overflow-hidden"
                     style={{
                         fontFamily: "var(--font-geist-mono), monospace",
                         fontSize: "0.8rem",

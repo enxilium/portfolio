@@ -13,7 +13,8 @@ const FADE_DELAY = 600;
 
 export default function ControlPanel() {
     const [open, setOpen] = useState(false);
-    const [hovering, setHovering] = useState(false);
+    const [hoveringAudio, setHoveringAudio] = useState(false);
+    const [hoveringGear, setHoveringGear] = useState(false);
     // Tracks whether we're in the post-close fade window
     const [recentlyClosed, setRecentlyClosed] = useState(false);
     const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,10 +35,6 @@ export default function ControlPanel() {
     const iconActive = isNight ? "#ffffff" : "#1a1a1a";
     const iconInactive = isNight ? "#ccc" : "#888";
     const btnBg = isNight ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.25)";
-    const panelBg = isNight ? "bg-neutral-800/70" : "bg-white/30";
-    const panelBorder = isNight ? "border-white/20" : "border-white/40";
-    const labelColor = isNight ? "text-gray-200" : "text-gray-800";
-    const subColor = isNight ? "text-gray-400" : "text-gray-500";
 
     const handleToggle = useCallback(() => {
         setOpen((prev) => {
@@ -53,6 +50,34 @@ export default function ControlPanel() {
         });
     }, []);
 
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    // Close panel when clicking outside
+    useEffect(() => {
+        if (!open) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (
+                panelRef.current &&
+                !panelRef.current.contains(e.target as Node)
+            ) {
+                setOpen(false);
+                setRecentlyClosed(true);
+                if (fadeTimer.current) clearTimeout(fadeTimer.current);
+                fadeTimer.current = setTimeout(() => {
+                    setRecentlyClosed(false);
+                }, FADE_DELAY);
+            }
+        };
+        // Delay listener to avoid closing on the same click that opened
+        const raf = requestAnimationFrame(() => {
+            window.addEventListener("mousedown", handleClickOutside);
+        });
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [open]);
+
     // Cleanup timer on unmount
     useEffect(() => {
         return () => {
@@ -60,24 +85,27 @@ export default function ControlPanel() {
         };
     }, []);
 
-    // Button is fully opaque when: panel open, hovering, or recently closed
-    const buttonOpaque = open || hovering || recentlyClosed;
+    // Per-button opaque state: each button lights up independently on hover.
+    // The gear button also stays opaque when the panel is open or recently closed.
+    const audioOpaque = hoveringAudio;
+    const gearOpaque = open || hoveringGear || recentlyClosed;
 
     return (
         <div
+            ref={panelRef}
             className="absolute top-4 right-4 z-50 flex flex-col items-end"
-            onMouseEnter={() => setHovering(true)}
-            onMouseLeave={() => setHovering(false)}
         >
             <div className="flex items-center gap-2">
                 {/* Audio mute/unmute button */}
                 <button
                     onClick={toggleAudioMuted}
+                    onMouseEnter={() => setHoveringAudio(true)}
+                    onMouseLeave={() => setHoveringAudio(false)}
                     className="cursor-pointer rounded-full p-2 transition-all duration-500"
                     style={{
-                        opacity: buttonOpaque ? 0.85 : 0.65,
-                        background: buttonOpaque ? btnBg : "transparent",
-                        backdropFilter: buttonOpaque ? "blur(8px)" : "none",
+                        opacity: audioOpaque ? 0.85 : 0.65,
+                        background: audioOpaque ? btnBg : "transparent",
+                        backdropFilter: audioOpaque ? "blur(8px)" : "none",
                     }}
                     aria-label={audioMuted ? "Unmute audio" : "Mute audio"}
                 >
@@ -85,13 +113,13 @@ export default function ControlPanel() {
                         <IoVolumeMuteOutline
                             size={22}
                             className="transition-colors duration-500"
-                            color={buttonOpaque ? iconActive : iconInactive}
+                            color={audioOpaque ? iconActive : iconInactive}
                         />
                     ) : (
                         <IoVolumeHighOutline
                             size={22}
                             className="transition-colors duration-500"
-                            color={buttonOpaque ? iconActive : iconInactive}
+                            color={audioOpaque ? iconActive : iconInactive}
                         />
                     )}
                 </button>
@@ -99,18 +127,20 @@ export default function ControlPanel() {
                 {/* Gear button */}
                 <button
                     onClick={handleToggle}
+                    onMouseEnter={() => setHoveringGear(true)}
+                    onMouseLeave={() => setHoveringGear(false)}
                     className="cursor-pointer rounded-full p-2 transition-all duration-500"
                     style={{
-                        opacity: buttonOpaque ? 0.85 : 0.65,
-                        background: buttonOpaque ? btnBg : "transparent",
-                        backdropFilter: buttonOpaque ? "blur(8px)" : "none",
+                        opacity: gearOpaque ? 0.85 : 0.65,
+                        background: gearOpaque ? btnBg : "transparent",
+                        backdropFilter: gearOpaque ? "blur(8px)" : "none",
                     }}
                     aria-label="Settings"
                 >
                     <IoSettingsOutline
                         size={22}
                         className="transition-colors duration-500"
-                        color={buttonOpaque ? iconActive : iconInactive}
+                        color={gearOpaque ? iconActive : iconInactive}
                     />
                 </button>
             </div>
@@ -125,17 +155,22 @@ export default function ControlPanel() {
                 }}
             >
                 <div
-                    className={`w-72 rounded-xl border ${panelBorder} ${panelBg} p-4 shadow-lg backdrop-blur-md transition-colors duration-500`}
+                    className="w-[calc(100vw-2rem)] max-w-72 rounded-md border border-white/10 bg-black/60 p-4 shadow-lg backdrop-blur-xl transition-colors duration-500"
+                    style={{ fontFamily: "var(--font-geist-mono), monospace" }}
                 >
+                    {/* Panel header */}
+                    <div className="mb-3 flex items-center gap-2">
+                        <span className="text-[10px] tracking-[3px] uppercase text-white/30">
+                            {"// SYS.CONFIG"}
+                        </span>
+                        <div className="flex-1 border-t border-white/10" />
+                    </div>
+
                     {/* Drift Speed Slider */}
                     <div className="mb-4">
-                        <label
-                            className={`mb-1 flex items-center justify-between text-xs font-medium ${labelColor} transition-colors duration-500`}
-                        >
-                            <span>Rock Drift Speed</span>
-                            <span
-                                className={`font-mono text-[10px] ${subColor} transition-colors duration-500`}
-                            >
+                        <label className="mb-1 flex items-center justify-between text-[11px] tracking-[1px] uppercase text-white/50 transition-colors duration-500">
+                            <span>asteroid_drift_speed</span>
+                            <span className="text-[10px] text-white/30 transition-colors duration-500">
                                 {driftSpeed.toFixed(2)}
                             </span>
                         </label>
@@ -154,13 +189,9 @@ export default function ControlPanel() {
 
                     {/* Repel Strength Slider */}
                     <div className="mb-4">
-                        <label
-                            className={`mb-1 flex items-center justify-between text-xs font-medium ${labelColor} transition-colors duration-500`}
-                        >
-                            <span>Cursor Repel Strength</span>
-                            <span
-                                className={`font-mono text-[10px] ${subColor} transition-colors duration-500`}
-                            >
+                        <label className="mb-1 flex items-center justify-between text-[11px] tracking-[1px] uppercase text-white/50 transition-colors duration-500">
+                            <span>cursor_repel_force</span>
+                            <span className="text-[10px] text-white/30 transition-colors duration-500">
                                 {repelStrength.toFixed(1)}
                             </span>
                         </label>
@@ -178,28 +209,34 @@ export default function ControlPanel() {
                     </div>
 
                     {/* Divider */}
-                    <div className="mb-3 border-t border-white/30" />
+                    <div className="mb-3 border-t border-white/10" />
 
                     {/* Day / Night Toggle */}
                     <div className="mb-3 flex items-center justify-between">
-                        <span
-                            className={`text-xs font-medium ${labelColor} transition-colors duration-500`}
-                        >
-                            {isNight ? "Night" : "Day"}
+                        <span className="text-[11px] tracking-[1px] uppercase text-white/50 transition-colors duration-500">
+                            {isNight ? "mode::night" : "mode::day"}
                         </span>
                         <button
                             onClick={toggleNight}
-                            className={`settings-toggle relative h-6 w-11 cursor-pointer rounded-full transition-colors duration-300 ${
-                                isNight ? "bg-indigo-500" : "bg-gray-300"
-                            }`}
+                            className="settings-toggle relative h-[22px] w-11 cursor-pointer overflow-hidden transition-all duration-300"
+                            style={{
+                                background: "rgba(255, 255, 255, 0.04)",
+                                border: `1px solid ${isNight ? "rgba(99, 102, 241, 0.4)" : "rgba(255, 255, 255, 0.10)"}`,
+                            }}
                             aria-label="Toggle day/night"
                         >
+                            {/* Sliding rectangle thumb */}
                             <span
-                                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300"
+                                className="absolute top-[2px] h-[calc(100%-4px)] w-[18px] transition-all duration-300"
                                 style={{
-                                    transform: isNight
-                                        ? "translateX(20px)"
-                                        : "translateX(0)",
+                                    left: isNight ? "calc(100% - 20px)" : "2px",
+                                    background: isNight
+                                        ? "rgba(99, 102, 241, 0.5)"
+                                        : "rgba(255, 255, 255, 0.12)",
+                                    border: `1px solid ${isNight ? "rgba(129, 140, 248, 0.6)" : "rgba(255, 255, 255, 0.18)"}`,
+                                    boxShadow: isNight
+                                        ? "0 0 8px rgba(99, 102, 241, 0.4), inset 0 0 4px rgba(129, 140, 248, 0.2)"
+                                        : "none",
                                 }}
                             />
                         </button>
@@ -207,24 +244,32 @@ export default function ControlPanel() {
 
                     {/* Rain Toggle */}
                     <div className="flex items-center justify-between">
-                        <span
-                            className={`text-xs font-medium ${labelColor} transition-colors duration-500`}
-                        >
-                            Rain
+                        <span className="text-[11px] tracking-[1px] uppercase text-white/50 transition-colors duration-500">
+                            rain
                         </span>
                         <button
                             onClick={toggleRain}
-                            className={`settings-toggle relative h-6 w-11 cursor-pointer rounded-full transition-colors duration-300 ${
-                                isRaining ? "bg-blue-500" : "bg-gray-300"
-                            }`}
+                            className="settings-toggle relative h-[22px] w-11 cursor-pointer overflow-hidden transition-all duration-300"
+                            style={{
+                                background: "rgba(255, 255, 255, 0.04)",
+                                border: `1px solid ${isRaining ? "rgba(59, 130, 246, 0.4)" : "rgba(255, 255, 255, 0.10)"}`,
+                            }}
                             aria-label="Toggle rain"
                         >
+                            {/* Sliding rectangle thumb */}
                             <span
-                                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300"
+                                className="absolute top-[2px] h-[calc(100%-4px)] w-[18px] transition-all duration-300"
                                 style={{
-                                    transform: isRaining
-                                        ? "translateX(20px)"
-                                        : "translateX(0)",
+                                    left: isRaining
+                                        ? "calc(100% - 20px)"
+                                        : "2px",
+                                    background: isRaining
+                                        ? "rgba(59, 130, 246, 0.5)"
+                                        : "rgba(255, 255, 255, 0.12)",
+                                    border: `1px solid ${isRaining ? "rgba(96, 165, 250, 0.6)" : "rgba(255, 255, 255, 0.18)"}`,
+                                    boxShadow: isRaining
+                                        ? "0 0 8px rgba(59, 130, 246, 0.4), inset 0 0 4px rgba(96, 165, 250, 0.2)"
+                                        : "none",
                                 }}
                             />
                         </button>
