@@ -120,6 +120,53 @@ export default function BlogForm({
             {/* Cover Image */}
             <ImageUpload value={coverUrl} onChange={setCoverUrl} />
 
+            {/* Card Preview */}
+            {(title || synopsis) && (
+                <div className="flex flex-col gap-2">
+                    <label
+                        className="text-xs tracking-[2px] uppercase text-white/40"
+                        style={{
+                            fontFamily: "var(--font-geist-mono), monospace",
+                        }}
+                    >
+                        Card Preview
+                    </label>
+                    <div
+                        className="rounded-xl border border-white/10 bg-white/3 p-5"
+                        style={{ maxWidth: 420 }}
+                    >
+                        <h3
+                            className="text-base font-semibold tracking-wide text-white"
+                            style={{
+                                fontFamily: "var(--font-open-sans), sans-serif",
+                                lineHeight: 1.3,
+                            }}
+                        >
+                            {title || "Post Title"}
+                        </h3>
+                        {synopsis && (
+                            <p
+                                className="mt-3 text-sm leading-relaxed text-white/80"
+                                style={{
+                                    fontFamily:
+                                        "var(--font-open-sans), sans-serif",
+                                }}
+                            >
+                                {synopsis}
+                            </p>
+                        )}
+                        <span
+                            className="mt-3 inline-block rounded border border-white/20 px-3 py-1 text-[10px] tracking-[2px] uppercase text-white/50"
+                            style={{
+                                fontFamily: "var(--font-geist-mono), monospace",
+                            }}
+                        >
+                            READ MORE
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Content Editor */}
             <div className="flex flex-col gap-2">
                 <label

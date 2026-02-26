@@ -229,10 +229,88 @@ export default function ExperienceForm({
                 grayscale
                 storagePath="logos"
                 previewHeight="h-20"
+                previewMode="contain"
             />
 
             {/* Cover Image */}
             <ImageUpload value={coverUrl} onChange={setCoverUrl} />
+
+            {/* Card Preview */}
+            {(positionTitle || organization || synopsis) && (
+                <div className="flex flex-col gap-2">
+                    <label
+                        className={labelClass}
+                        style={{ fontFamily: monoFont }}
+                    >
+                        Card Preview
+                    </label>
+                    <div
+                        className="rounded-xl border border-white/10 bg-white/[0.03] p-5"
+                        style={{ maxWidth: 420 }}
+                    >
+                        <div className="flex items-center gap-3">
+                            {logoUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={logoUrl}
+                                    alt=""
+                                    className="h-9 w-9 shrink-0 rounded-md object-cover"
+                                    style={{ filter: "grayscale(100%)" }}
+                                />
+                            )}
+                            <h3
+                                className="text-base font-semibold tracking-wide text-white"
+                                style={{
+                                    fontFamily: sansFont,
+                                    lineHeight: 1.3,
+                                }}
+                            >
+                                {positionTitle || "Position Title"}
+                            </h3>
+                        </div>
+                        <p
+                            className="mt-2 text-[10px] tracking-[2px] uppercase text-white/40"
+                            style={{ fontFamily: monoFont }}
+                        >
+                            {organization || "Organization"}
+                            {startDate && (
+                                <>
+                                    {" / "}
+                                    {new Date(startDate).toLocaleDateString(
+                                        "en-US",
+                                        { year: "numeric", month: "short" },
+                                    )}
+                                    {" — "}
+                                    {isOngoing
+                                        ? "Present"
+                                        : endDate
+                                          ? new Date(
+                                                endDate,
+                                            ).toLocaleDateString("en-US", {
+                                                year: "numeric",
+                                                month: "short",
+                                            })
+                                          : "…"}
+                                </>
+                            )}
+                        </p>
+                        {synopsis && (
+                            <p
+                                className="mt-3 text-sm leading-relaxed text-white/80"
+                                style={{ fontFamily: sansFont }}
+                            >
+                                {synopsis}
+                            </p>
+                        )}
+                        <span
+                            className="mt-3 inline-block rounded border border-white/20 px-3 py-1 text-[10px] tracking-[2px] uppercase text-white/50"
+                            style={{ fontFamily: monoFont }}
+                        >
+                            READ MORE
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* Content Editor */}
             <div className="flex flex-col gap-2">

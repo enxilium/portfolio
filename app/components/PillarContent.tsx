@@ -220,7 +220,6 @@ export default function PillarContent() {
     // Colors — always light text since pillar background is always dark
     const textColor = "#ffffff";
     const mutedColor = "rgba(255,255,255,0.5)";
-    const accentColor = "rgba(255,255,255,0.15)";
     const dotActive = "rgba(255,255,255,0.9)";
     const dotInactive = "rgba(255,255,255,0.25)";
 
@@ -237,7 +236,6 @@ export default function PillarContent() {
                 className="pointer-events-auto flex flex-col"
                 style={{
                     width: "min(480px, 42vw)",
-                    height: "min(520px, 60vh)",
                     padding: "clamp(24px, 4vw, 48px)",
                     marginLeft: isLeft ? "clamp(32px, 6vw, 80px)" : undefined,
                     marginRight: isLeft ? undefined : "clamp(32px, 6vw, 80px)",
@@ -260,140 +258,143 @@ export default function PillarContent() {
                     {sectionLabel}
                 </span>
 
-                {/* Divider line */}
+                {/* Card container — consistent size across slides */}
                 <div
                     style={{
-                        width: "100%",
-                        height: "1px",
-                        background: accentColor,
-                        marginBottom: "clamp(16px, 2.5vw, 32px)",
-                        transition: "background 600ms ease-in-out",
-                    }}
-                />
-
-                {/* Slide content with cross-fade */}
-                <div
-                    style={{
-                        opacity: slideFade,
-                        transition: `opacity ${SLIDE_FADE_MS}ms ease-in-out`,
-                        flex: 1,
-                        overflow: "hidden",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "16px",
+                        background: "rgba(255,255,255,0.02)",
+                        padding: "clamp(20px, 3vw, 32px)",
                         display: "flex",
                         flexDirection: "column",
                     }}
                 >
-                    {/* Title */}
+                    {/* Slide content with cross-fade */}
                     <div
                         style={{
+                            opacity: slideFade,
+                            transition: `opacity ${SLIDE_FADE_MS}ms ease-in-out`,
                             display: "flex",
-                            alignItems: "center",
-                            gap: "clamp(8px, 1vw, 14px)",
-                            flexDirection: isLeft ? "row" : "row-reverse",
+                            flexDirection: "column",
                         }}
                     >
-                        {"logoUrl" in slide && slide.logoUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                                src={slide.logoUrl}
-                                alt=""
+                        {/* Title row — logo always to the left for experiences */}
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "clamp(8px, 1vw, 14px)",
+                                flexDirection: "row",
+                            }}
+                        >
+                            {"logoUrl" in slide && slide.logoUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={slide.logoUrl}
+                                    alt=""
+                                    style={{
+                                        width: "clamp(28px, 3vw, 40px)",
+                                        height: "clamp(28px, 3vw, 40px)",
+                                        borderRadius: "6px",
+                                        objectFit: "cover",
+                                        filter: "grayscale(100%)",
+                                        flexShrink: 0,
+                                    }}
+                                />
+                            )}
+                            <h2
+                                className="select-none"
                                 style={{
-                                    width: "clamp(28px, 3vw, 40px)",
-                                    height: "clamp(28px, 3vw, 40px)",
-                                    borderRadius: "6px",
-                                    objectFit: "cover",
-                                    filter: "grayscale(100%)",
-                                    flexShrink: 0,
-                                    border: "1px solid rgba(255,255,255,0.1)",
+                                    fontFamily:
+                                        "var(--font-open-sans), 'Avenir', sans-serif",
+                                    fontSize: "clamp(1rem, 2.2vw, 1.5rem)",
+                                    fontWeight: 600,
+                                    letterSpacing: "clamp(1px, 0.3vw, 3px)",
+                                    color: textColor,
+                                    margin: 0,
+                                    lineHeight: 1.3,
+                                    transition: "color 600ms ease-in-out",
                                 }}
-                            />
-                        )}
-                        <h2
+                            >
+                                {slide.title}
+                            </h2>
+                        </div>
+
+                        {/* Subtitle (date/company) */}
+                        <p
                             className="select-none"
                             style={{
-                                fontFamily:
-                                    "var(--font-open-sans), 'Avenir', sans-serif",
-                                fontSize: "clamp(1rem, 2.2vw, 1.5rem)",
-                                fontWeight: 600,
+                                fontFamily: "var(--font-geist-mono), monospace",
+                                fontSize: "clamp(0.55rem, 0.9vw, 0.7rem)",
                                 letterSpacing: "clamp(1px, 0.3vw, 3px)",
-                                color: textColor,
+                                color: mutedColor,
                                 margin: 0,
-                                lineHeight: 1.3,
+                                marginTop: "clamp(6px, 1vw, 12px)",
                                 transition: "color 600ms ease-in-out",
                             }}
                         >
-                            {slide.title}
-                        </h2>
+                            {"company" in slide
+                                ? `${slide.company} / ${slide.period}`
+                                : slide.date}
+                        </p>
+
+                        {/* Body text — min-height ensures card stays consistent across slides */}
+                        <p
+                            style={{
+                                fontFamily:
+                                    "var(--font-open-sans), 'Avenir', sans-serif",
+                                fontSize: "clamp(0.75rem, 1.2vw, 0.95rem)",
+                                lineHeight: 1.7,
+                                color: textColor,
+                                margin: 0,
+                                marginTop: "clamp(12px, 2vw, 24px)",
+                                opacity: 0.85,
+                                transition: "color 600ms ease-in-out",
+                                minHeight: "6.8em",
+                            }}
+                        >
+                            {slide.body}
+                        </p>
                     </div>
 
-                    {/* Subtitle (date/company) */}
-                    <p
-                        className="select-none"
+                    {/* Read more button — fixed position between text and nav */}
+                    <a
+                        href={slide.href}
+                        target="_blank"
                         style={{
+                            alignSelf: "flex-start",
+                            display:
+                                slide.href === "#" ? "none" : "inline-block",
+                            background: "none",
+                            border: "1px solid rgba(255,255,255,0.3)",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            padding: "6px 16px",
+                            marginTop: "clamp(12px, 1.5vw, 20px)",
                             fontFamily: "var(--font-geist-mono), monospace",
-                            fontSize: "clamp(0.55rem, 0.9vw, 0.7rem)",
-                            letterSpacing: "clamp(1px, 0.3vw, 3px)",
-                            color: mutedColor,
-                            margin: 0,
-                            marginTop: "clamp(6px, 1vw, 12px)",
-                            transition: "color 600ms ease-in-out",
+                            fontSize: "clamp(0.6rem, 0.9vw, 0.75rem)",
+                            letterSpacing: "2px",
+                            color: "rgba(255,255,255,0.7)",
+                            textDecoration: "none",
+                            transition: "color 200ms, border-color 200ms",
+                            opacity: slideFade,
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = "#fff";
+                            e.currentTarget.style.borderColor =
+                                "rgba(255,255,255,0.6)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color =
+                                "rgba(255,255,255,0.7)";
+                            e.currentTarget.style.borderColor =
+                                "rgba(255,255,255,0.3)";
                         }}
                     >
-                        {"company" in slide
-                            ? `${slide.company} / ${slide.period}`
-                            : slide.date}
-                    </p>
-
-                    {/* Body text */}
-                    <p
-                        style={{
-                            fontFamily:
-                                "var(--font-open-sans), 'Avenir', sans-serif",
-                            fontSize: "clamp(0.75rem, 1.2vw, 0.95rem)",
-                            lineHeight: 1.7,
-                            color: textColor,
-                            margin: 0,
-                            marginTop: "clamp(12px, 2vw, 24px)",
-                            opacity: 0.85,
-                            transition: "color 600ms ease-in-out",
-                        }}
-                    >
-                        {slide.body}
-                    </p>
+                        READ MORE
+                    </a>
                 </div>
-
-                {/* Read more button — fixed position between text and nav */}
-                <a
-                    href={slide.href}
-                    style={{
-                        alignSelf: isLeft ? "flex-start" : "flex-end",
-                        display: slide.href === "#" ? "none" : "inline-block",
-                        background: "none",
-                        border: "1px solid rgba(255,255,255,0.3)",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        padding: "6px 16px",
-                        marginTop: "clamp(12px, 1.5vw, 20px)",
-                        fontFamily: "var(--font-geist-mono), monospace",
-                        fontSize: "clamp(0.6rem, 0.9vw, 0.75rem)",
-                        letterSpacing: "2px",
-                        color: "rgba(255,255,255,0.7)",
-                        textDecoration: "none",
-                        transition: "color 200ms, border-color 200ms",
-                        opacity: slideFade,
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.color = "#fff";
-                        e.currentTarget.style.borderColor =
-                            "rgba(255,255,255,0.6)";
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "rgba(255,255,255,0.7)";
-                        e.currentTarget.style.borderColor =
-                            "rgba(255,255,255,0.3)";
-                    }}
-                >
-                    READ MORE
-                </a>
+                {/* end card container */}
 
                 {/* ── Navigation: dots + arrows ── */}
                 <div

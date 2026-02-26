@@ -19,17 +19,20 @@ interface ImageUploadProps {
     storagePath?: string;
     /** Height of the preview / drop zone. Default "h-32". */
     previewHeight?: string;
+    /** How to display the preview image. Default "cover". */
+    previewMode?: "cover" | "contain";
 }
 
 export default function ImageUpload({
     value,
     onChange,
     label = "Cover Image",
-    aspectRatio = 16 / 9,
-    outputWidth = 1200,
+    aspectRatio = 3.5,
+    outputWidth = 1920,
     grayscale = false,
     storagePath = "covers",
     previewHeight = "h-32",
+    previewMode = "cover",
 }: ImageUploadProps) {
     const [uploading, setUploading] = useState(false);
     const [cropSrc, setCropSrc] = useState<string | null>(null);
@@ -99,11 +102,16 @@ export default function ImageUpload({
                         <img
                             src={value}
                             alt={`${label} preview`}
-                            className={`w-full rounded border border-white/10 object-cover ${previewHeight}`}
+                            className={`w-full rounded border border-white/10 ${previewHeight}`}
                             style={{
+                                objectFit: previewMode,
                                 filter: grayscale
                                     ? "grayscale(100%)"
                                     : undefined,
+                                background:
+                                    previewMode === "contain"
+                                        ? "rgba(255,255,255,0.03)"
+                                        : undefined,
                             }}
                         />
                         <button

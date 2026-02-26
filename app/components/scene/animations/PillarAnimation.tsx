@@ -195,9 +195,10 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             lastHoverEmitted.current = currentHover;
             lastFocusedEmitted.current = focused;
             useStore.getState().setHoveredPillar(currentHover);
-            // Only show pointer cursor in the default view (no pillar focused)
+            // Only show pointer cursor in the default view (no pillar focused, not in free-view)
+            const freeView = useStore.getState().freeView;
             document.body.style.cursor =
-                currentHover && !focused ? "pointer" : "auto";
+                currentHover && !focused && !freeView ? "pointer" : "auto";
         }
 
         // Invalidate to request next frame (demand mode)

@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// ── Aspect ratio presets ──
-// width / height — e.g. 16:9 cover = 1.778, 1:1 logo = 1
 interface CropModalProps {
     /** The object URL or data URL of the source image */
     imageSrc: string;
@@ -19,6 +17,10 @@ interface CropModalProps {
     onCancel: () => void;
 }
 
+// Maximum display area for the full image
+const MAX_DISPLAY_W = 600;
+const MAX_DISPLAY_H = 500;
+
 export default function CropModal({
     imageSrc,
     aspectRatio,
@@ -27,61 +29,84 @@ export default function CropModal({
     onCrop,
     onCancel,
 }: CropModalProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement | null>(null);
 
-    // Natural dimensions of the loaded image
+    // Natural image dimensions
     const [naturalW, setNaturalW] = useState(0);
     const [naturalH, setNaturalH] = useState(0);
 
-    // The scale at which the image is rendered so it fills the viewport
-    const [scale, setScale] = useState(1);
+    // Scale at which the full image is displayed (fit inside MAX bounds)
+    const [displayScale, setDisplayScale] = useState(1);
 
-    // Pan offset in *scaled* px (CSS translate)
-    const [offset, setOffset] = useState({ x: 0, y: 0 });
+    // Displayed image dimensions
+    const [displayW, setDisplayW] = useState(0);
+    const [displayH, setDisplayH] = useState(0);
+
+    // Crop box position (top-left corner, in display-px)
+    const [cropX, setCropX] = useState(0);
+    const [cropY, setCropY] = useState(0);
+
+    // Crop box dimensions in display-px (computed from aspect ratio)
+    const [cropW, setCropW] = useState(0);
+    const [cropH, setCropH] = useState(0);
+
+    // Drag state
     const dragging = useRef(false);
     const dragStart = useRef({ x: 0, y: 0 });
-    const offsetStart = useRef({ x: 0, y: 0 });
+    const cropStart = useRef({ x: 0, y: 0 });
 
-    // Crop viewport size (fixed on screen)
-    const VIEWPORT_W = 400;
-    const VIEWPORT_H = VIEWPORT_W / aspectRatio;
-
-    // Once the image loads, compute the initial scale so the image
-    // covers the viewport (like object-fit: cover)
+    // Load image and compute layout
     const handleImageLoad = useCallback(
         (e: React.SyntheticEvent<HTMLImageElement>) => {
             const img = e.currentTarget;
-            setNaturalW(img.naturalWidth);
-            setNaturalH(img.naturalHeight);
-
-            const scaleX = VIEWPORT_W / img.naturalWidth;
-            const scaleY = VIEWPORT_H / img.naturalHeight;
-            const coverScale = Math.max(scaleX, scaleY);
-            setScale(coverScale);
-
-            // Centre the image
-            const scaledW = img.naturalWidth * coverScale;
-            const scaledH = img.naturalHeight * coverScale;
-            setOffset({
-                x: (VIEWPORT_W - scaledW) / 2,
-                y: (VIEWPORT_H - scaledH) / 2,
-            });
-
+            const nw = img.naturalWidth;
+            const nh = img.naturalHeight;
+            setNaturalW(nw);
+            setNaturalH(nh);
             imgRef.current = img;
+
+            // Scale image to fit inside max display bounds
+            const scale = Math.min(MAX_DISPLAY_W / nw, MAX_DISPLAY_H / nh, 1);
+            setDisplayScale(scale);
+
+            const dw = Math.round(nw * scale);
+            const dh = Math.round(nh * scale);
+            setDisplayW(dw);
+            setDisplayH(dh);
+
+            // Compute the largest crop box that fits within the displayed image
+            // while maintaining the target aspect ratio
+            let cw: number;
+            let ch: number;
+            if (dw / dh > aspectRatio) {
+                // Image is wider than target — height is the constraint
+                ch = dh;
+                cw = Math.round(ch * aspectRatio);
+            } else {
+                // Image is taller than target — width is the constraint
+                cw = dw;
+                ch = Math.round(cw / aspectRatio);
+            }
+
+            setCropW(cw);
+            setCropH(ch);
+
+            // Centre the crop box
+            setCropX(Math.round((dw - cw) / 2));
+            setCropY(Math.round((dh - ch) / 2));
         },
-        [VIEWPORT_W, VIEWPORT_H],
+        [aspectRatio],
     );
 
-    // ── Pointer drag ──
+    // ── Drag the crop box ──
     const onPointerDown = useCallback(
         (e: React.PointerEvent) => {
             dragging.current = true;
             dragStart.current = { x: e.clientX, y: e.clientY };
-            offsetStart.current = { ...offset };
+            cropStart.current = { x: cropX, y: cropY };
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
         },
-        [offset],
+        [cropX, cropY],
     );
 
     const onPointerMove = useCallback(
@@ -90,57 +115,61 @@ export default function CropModal({
             const dx = e.clientX - dragStart.current.x;
             const dy = e.clientY - dragStart.current.y;
 
-            const scaledW = naturalW * scale;
-            const scaledH = naturalH * scale;
+            const newX = Math.min(
+                displayW - cropW,
+                Math.max(0, cropStart.current.x + dx),
+            );
+            const newY = Math.min(
+                displayH - cropH,
+                Math.max(0, cropStart.current.y + dy),
+            );
 
-            // Clamp so the image always covers the viewport
-            const minX = VIEWPORT_W - scaledW;
-            const maxX = 0;
-            const minY = VIEWPORT_H - scaledH;
-            const maxY = 0;
-
-            setOffset({
-                x: Math.min(maxX, Math.max(minX, offsetStart.current.x + dx)),
-                y: Math.min(maxY, Math.max(minY, offsetStart.current.y + dy)),
-            });
+            setCropX(newX);
+            setCropY(newY);
         },
-        [naturalW, naturalH, scale, VIEWPORT_W, VIEWPORT_H],
+        [displayW, displayH, cropW, cropH],
     );
 
     const onPointerUp = useCallback(() => {
         dragging.current = false;
     }, []);
 
-    // ── Scroll to zoom ──
+    // ── Scroll to resize crop box ──
     const onWheel = useCallback(
         (e: React.WheelEvent) => {
             e.preventDefault();
 
-            const zoomFactor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
-            const minScale = Math.max(
-                VIEWPORT_W / naturalW,
-                VIEWPORT_H / naturalH,
-            );
-            const newScale = Math.max(minScale, scale * zoomFactor);
+            const zoomFactor = e.deltaY < 0 ? 1.06 : 1 / 1.06;
 
-            // Zoom towards the cursor position inside the viewport
-            const rect = containerRef.current!.getBoundingClientRect();
-            const cx = e.clientX - rect.left;
-            const cy = e.clientY - rect.top;
+            // Compute new crop width, clamped to image bounds
+            const minCW = Math.min(80, displayW);
+            const maxCW = displayW;
+            let newCW = Math.round(cropW * zoomFactor);
+            newCW = Math.max(minCW, Math.min(maxCW, newCW));
 
-            const ratio = newScale / scale;
-            const newX = cx - ratio * (cx - offset.x);
-            const newY = cy - ratio * (cy - offset.y);
+            let newCH = Math.round(newCW / aspectRatio);
+            // Clamp by height too
+            if (newCH > displayH) {
+                newCH = displayH;
+                newCW = Math.round(newCH * aspectRatio);
+            }
 
-            const scaledW = naturalW * newScale;
-            const scaledH = naturalH * newScale;
-            const clampedX = Math.min(0, Math.max(VIEWPORT_W - scaledW, newX));
-            const clampedY = Math.min(0, Math.max(VIEWPORT_H - scaledH, newY));
+            // Keep the crop box centred on its current centre
+            const cx = cropX + cropW / 2;
+            const cy = cropY + cropH / 2;
+            let newX = Math.round(cx - newCW / 2);
+            let newY = Math.round(cy - newCH / 2);
 
-            setScale(newScale);
-            setOffset({ x: clampedX, y: clampedY });
+            // Clamp position
+            newX = Math.max(0, Math.min(displayW - newCW, newX));
+            newY = Math.max(0, Math.min(displayH - newCH, newY));
+
+            setCropW(newCW);
+            setCropH(newCH);
+            setCropX(newX);
+            setCropY(newY);
         },
-        [naturalW, naturalH, scale, offset, VIEWPORT_W, VIEWPORT_H],
+        [cropX, cropY, cropW, cropH, displayW, displayH, aspectRatio],
     );
 
     // ── Crop & export ──
@@ -153,13 +182,11 @@ export default function CropModal({
         canvas.height = outputHeight;
         const ctx = canvas.getContext("2d")!;
 
-        // The viewport maps to (0,0)→(VIEWPORT_W, VIEWPORT_H) on screen.
-        // The image is at (offset.x, offset.y) with dimensions (naturalW*scale, naturalH*scale).
-        // We need to find which region of the *natural* image is visible in the viewport.
-        const srcX = -offset.x / scale;
-        const srcY = -offset.y / scale;
-        const srcW = VIEWPORT_W / scale;
-        const srcH = VIEWPORT_H / scale;
+        // Convert crop box position from display-px back to natural-px
+        const srcX = cropX / displayScale;
+        const srcY = cropY / displayScale;
+        const srcW = cropW / displayScale;
+        const srcH = cropH / displayScale;
 
         if (grayscale) {
             ctx.filter = "grayscale(100%)";
@@ -185,10 +212,11 @@ export default function CropModal({
             0.9,
         );
     }, [
-        offset,
-        scale,
-        VIEWPORT_W,
-        VIEWPORT_H,
+        cropX,
+        cropY,
+        cropW,
+        cropH,
+        displayScale,
         outputWidth,
         aspectRatio,
         grayscale,
@@ -206,6 +234,13 @@ export default function CropModal({
 
     const monoFont = "var(--font-geist-mono), monospace";
 
+    // Clip-path to dim areas outside the crop box (the "letterbox" effect).
+    // We use a polygon with a hole (outer rect CW, inner rect CCW).
+    const clipDim =
+        displayW > 0 && displayH > 0
+            ? `polygon(evenodd, 0 0, ${displayW}px 0, ${displayW}px ${displayH}px, 0 ${displayH}px, 0 0, ${cropX}px ${cropY}px, ${cropX}px ${cropY + cropH}px, ${cropX + cropW}px ${cropY + cropH}px, ${cropX + cropW}px ${cropY}px, ${cropX}px ${cropY}px)`
+            : undefined;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-5">
@@ -214,41 +249,105 @@ export default function CropModal({
                     className="text-xs tracking-[2px] uppercase text-white/50"
                     style={{ fontFamily: monoFont }}
                 >
-                    Drag to pan · Scroll to zoom
+                    Drag the crop box · Scroll to resize
                 </p>
 
-                {/* Crop viewport */}
+                {/* Image container — shows the full image */}
                 <div
-                    ref={containerRef}
-                    className="relative cursor-grab overflow-hidden rounded border border-white/20 active:cursor-grabbing"
+                    className="relative overflow-hidden rounded border border-white/20"
                     style={{
-                        width: VIEWPORT_W,
-                        height: VIEWPORT_H,
+                        width: displayW || MAX_DISPLAY_W,
+                        height: displayH || MAX_DISPLAY_H,
                         touchAction: "none",
+                        background: "#111",
                     }}
-                    onPointerDown={onPointerDown}
-                    onPointerMove={onPointerMove}
-                    onPointerUp={onPointerUp}
                     onWheel={onWheel}
                 >
+                    {/* Full image */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                         src={imageSrc}
-                        alt="Crop preview"
+                        alt="Crop source"
                         draggable={false}
                         onLoad={handleImageLoad}
                         style={{
-                            position: "absolute",
-                            left: 0,
-                            top: 0,
-                            transformOrigin: "0 0",
-                            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                            display: "block",
+                            width: displayW || "auto",
+                            height: displayH || "auto",
                             maxWidth: "none",
                             filter: grayscale ? "grayscale(100%)" : undefined,
                             userSelect: "none",
+                            pointerEvents: "none",
                         }}
                     />
+
+                    {/* Dimmed overlay outside the crop box */}
+                    {displayW > 0 && (
+                        <div
+                            style={{
+                                position: "absolute",
+                                inset: 0,
+                                background: "rgba(0, 0, 0, 0.55)",
+                                clipPath: clipDim,
+                                pointerEvents: "none",
+                                transition: "clip-path 50ms ease-out",
+                            }}
+                        />
+                    )}
+
+                    {/* Draggable crop box outline */}
+                    {displayW > 0 && (
+                        <div
+                            style={{
+                                position: "absolute",
+                                left: cropX,
+                                top: cropY,
+                                width: cropW,
+                                height: cropH,
+                                border: "2px solid rgba(255, 255, 255, 0.7)",
+                                borderRadius: 2,
+                                cursor: "grab",
+                                boxShadow:
+                                    "0 0 0 1px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.2)",
+                            }}
+                            onPointerDown={onPointerDown}
+                            onPointerMove={onPointerMove}
+                            onPointerUp={onPointerUp}
+                        >
+                            {/* Corner indicators */}
+                            {[
+                                { top: -3, left: -3 },
+                                { top: -3, right: -3 },
+                                { bottom: -3, left: -3 },
+                                { bottom: -3, right: -3 },
+                            ].map((pos, i) => (
+                                <div
+                                    key={i}
+                                    style={{
+                                        position: "absolute",
+                                        ...pos,
+                                        width: 8,
+                                        height: 8,
+                                        background: "rgba(255,255,255,0.9)",
+                                        borderRadius: 1,
+                                        pointerEvents: "none",
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
+
+                {/* Crop dimensions info */}
+                {displayW > 0 && (
+                    <p
+                        className="text-[10px] tracking-[2px] text-white/30"
+                        style={{ fontFamily: monoFont }}
+                    >
+                        {Math.round(cropW / displayScale)} ×{" "}
+                        {Math.round(cropH / displayScale)} px
+                    </p>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-3">
