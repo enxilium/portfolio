@@ -68,6 +68,9 @@ export default function RainEffect() {
         const sinA = Math.sin(ANGLE);
         const cosA = Math.cos(ANGLE);
 
+        // Whether the rAF loop is currently running
+        let loopRunning = false;
+
         const tick = () => {
             const w = canvas.width;
             const h = canvas.height;
@@ -79,6 +82,12 @@ export default function RainEffect() {
                 (target - globalOpacity.current) * FADE_SPEED;
 
             if (globalOpacity.current < 0.005) {
+                if (!isRainingRef.current) {
+                    // Rain fully faded out — stop the loop to save CPU
+                    globalOpacity.current = 0;
+                    loopRunning = false;
+                    return;
+                }
                 rafRef.current = requestAnimationFrame(tick);
                 return;
             }
@@ -117,10 +126,25 @@ export default function RainEffect() {
             rafRef.current = requestAnimationFrame(tick);
         };
 
-        rafRef.current = requestAnimationFrame(tick);
+        // Start the loop function (called when rain starts)
+        const startLoop = () => {
+            if (loopRunning) return;
+            loopRunning = true;
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        // Subscribe to rain state to start/stop the loop
+        const unsubRain = useStore.subscribe((state) => {
+            if (state.isRaining) startLoop();
+        });
+
+        // If already raining at mount time, start immediately
+        if (isRainingRef.current) startLoop();
 
         return () => {
             cancelAnimationFrame(rafRef.current);
+            loopRunning = false;
+            unsubRain();
             window.removeEventListener("resize", resize);
         };
     }, []);

@@ -37,7 +37,7 @@ export default function AudioManager() {
         const music = new Audio("/music.mp3");
         music.loop = true;
         music.volume = 0;
-        music.preload = "auto";
+        music.preload = "none";
         // Explicitly ensure pitch is preserved (default in modern browsers)
         music.preservesPitch = true;
         musicRef.current = music;
@@ -45,7 +45,7 @@ export default function AudioManager() {
         const thunder = new Audio("/thunderstorm.mp3");
         thunder.loop = true;
         thunder.volume = 0;
-        thunder.preload = "auto";
+        thunder.preload = "none";
         thunderRef.current = thunder;
 
         // Try to start music playback (called from bunkerOpen signal or user gesture)
@@ -100,10 +100,14 @@ export default function AudioManager() {
             }
         });
 
-        // Smoothing loop via rAF
+        // Whether the rAF loop is currently running
+        let loopRunning = false;
+
+        // Smoothing loop via rAF — only runs when a fade is in progress
         const tick = () => {
             const m = musicRef.current;
             const t = thunderRef.current;
+            let settled = true;
 
             // Smoothly adjust music playbackRate and volume
             if (m) {
@@ -112,6 +116,7 @@ export default function AudioManager() {
                 const rateDiff = rateTarget - currentRate;
                 if (Math.abs(rateDiff) > 0.002) {
                     m.playbackRate = currentRate + rateDiff * RATE_SMOOTH;
+                    settled = false;
                 } else {
                     m.playbackRate = rateTarget;
                 }
@@ -135,6 +140,7 @@ export default function AudioManager() {
                         0,
                         Math.min(1, currentVol + Math.sign(diff) * FADE_STEP),
                     );
+                    settled = false;
                 } else {
                     t.volume = target;
                 }
@@ -148,14 +154,35 @@ export default function AudioManager() {
                 }
             }
 
+            if (settled) {
+                // All values have converged — stop the loop
+                loopRunning = false;
+                return;
+            }
             rafRef.current = requestAnimationFrame(tick);
         };
-        rafRef.current = requestAnimationFrame(tick);
+
+        // Start the fading loop (idempotent)
+        const startFadeLoop = () => {
+            if (loopRunning) return;
+            loopRunning = true;
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        // Kick off the fade loop whenever a store value changes that affects audio
+        const unsubFade = useStore.subscribe(() => {
+            startFadeLoop();
+        });
+
+        // Start once on mount in case initial state needs fading
+        startFadeLoop();
 
         return () => {
             unsub();
             unsubBunker();
+            unsubFade();
             cancelAnimationFrame(rafRef.current);
+            loopRunning = false;
             document.removeEventListener("click", unlock);
             document.removeEventListener("keydown", unlock);
             document.removeEventListener("pointerdown", unlock);

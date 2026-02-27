@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { useRef, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment, Stars, useGLTF } from "@react-three/drei";
+import { Stars, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import CameraController from "./components/scene/controllers/CameraController";
 import PillarAnimation from "./components/scene/animations/PillarAnimation";
@@ -58,19 +58,36 @@ function DynamicBloom({ intensityRef }: DynamicBloomProps) {
 // ── Stars wrapper that fades based on scene.userData.starsOpacity ──
 function NightStars() {
     const groupRef = useRef<THREE.Group>(null);
+    // Cache Points materials on mount to avoid traversing the scene graph every frame
+    const materialsRef = useRef<THREE.PointsMaterial[]>([]);
+    const materialsCollected = useRef(false);
 
     useFrame((state) => {
         if (!groupRef.current) return;
+
+        // Collect materials once after the Stars component has mounted its children
+        if (!materialsCollected.current) {
+            const mats: THREE.PointsMaterial[] = [];
+            groupRef.current.traverse((child) => {
+                if (child instanceof THREE.Points) {
+                    const mat = child.material as THREE.PointsMaterial;
+                    mat.transparent = true;
+                    mats.push(mat);
+                }
+            });
+            if (mats.length > 0) {
+                materialsRef.current = mats;
+                materialsCollected.current = true;
+            }
+        }
+
         const opacity = (state.scene.userData.starsOpacity as number) ?? 0;
         groupRef.current.visible = opacity > 0.01;
-        // Drei Stars uses PointsMaterial — scale opacity via material
-        groupRef.current.traverse((child) => {
-            if (child instanceof THREE.Points) {
-                const mat = child.material as THREE.PointsMaterial;
-                mat.opacity = opacity;
-                mat.transparent = true;
-            }
-        });
+        // Set opacity on cached materials — no traversal needed
+        const mats = materialsRef.current;
+        for (let i = 0; i < mats.length; i++) {
+            mats[i].opacity = opacity;
+        }
     });
 
     return (
@@ -241,11 +258,6 @@ export default function Scene() {
                 }}
             >
                 <Suspense fallback={null}>
-                    <Environment
-                        files="/overcast_soil_puresky_4k.hdr"
-                        background
-                        environmentIntensity={0.1}
-                    />
                     <SceneContent />
                 </Suspense>
             </Canvas>

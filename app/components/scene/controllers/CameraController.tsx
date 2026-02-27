@@ -241,6 +241,9 @@ export default function CameraController({
         };
 
         const handleWheel = (e: WheelEvent) => {
+            // Allow native scrolling when the content overlay is open
+            if (useStore.getState().contentOverlay) return;
+
             e.preventDefault();
             // Scroll up = zoom in, scroll down = zoom out
             zoom.current = Math.max(
@@ -371,8 +374,13 @@ export default function CameraController({
         cam.fov += (targetFov - cam.fov) * 0.05;
         cam.updateProjectionMatrix();
 
-        // Invalidate to request next frame (demand mode)
-        state.invalidate();
+        // Only keep requesting frames while the camera is still converging
+        const posDelta = cam.position.distanceTo(position);
+        const quatDelta = cam.quaternion.angleTo(targetQuat.current);
+        const fovDelta = Math.abs(cam.fov - targetFov);
+        if (posDelta > 0.0001 || quatDelta > 0.0001 || fovDelta > 0.01) {
+            state.invalidate();
+        }
     });
 
     return freeView ? (

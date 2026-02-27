@@ -49,11 +49,9 @@ export default function StargateActivation({
     const freeView = useStore((s) => s.freeView);
     const hoveredPillar = useStore((s) => s.hoveredPillar);
     const focusedPillar = useStore((s) => s.focusedPillar);
-    // Activation progress 0..1
-    const [progress, setProgress] = useState(0);
-    // Whether we've hit the climax and should flash
+    // Whether we've hit the climax and should flash (triggers React render)
     const [flashing, setFlashing] = useState(false);
-    // Whether we're showing the new scene
+    // Whether we're showing the new scene (triggers React render)
     const [transitioned, setTransitioned] = useState(false);
     // Whether LMB is currently held
     const holdingRef = useRef(false);
@@ -63,9 +61,10 @@ export default function StargateActivation({
     // Store the activation speed in the Zustand store for StargateAnimation to read
     const setActivationProgress = useStore((s) => s.setActivationProgress);
 
-    // Shake offsets — updated in the animation loop, read during render
-    const shakeRef = useRef({ x: 0, y: 0 });
-    const [shake, setShake] = useState({ x: 0, y: 0 });
+    // DOM refs for direct manipulation — avoids React re-renders at 60fps
+    const sceneRootStyleRef = useRef<HTMLStyleElement | null>(null);
+    const glowRef = useRef<HTMLDivElement>(null);
+    const flashRef = useRef<HTMLDivElement>(null);
 
     // Dust particles
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -104,6 +103,17 @@ export default function StargateActivation({
         };
     }, [handleMouseDown, handleMouseUp]);
 
+    // Create a <style> element for shake transform (injected once, updated via textContent)
+    useEffect(() => {
+        const style = document.createElement("style");
+        document.head.appendChild(style);
+        sceneRootStyleRef.current = style;
+        return () => {
+            style.remove();
+            sceneRootStyleRef.current = null;
+        };
+    }, []);
+
     // ── Animation loop ──
     useEffect(() => {
         if (transitioned) return;
@@ -130,24 +140,42 @@ export default function StargateActivation({
                 );
             }
 
-            setProgress(progressRef.current);
-            setActivationProgress(progressRef.current);
+            const progress = progressRef.current;
+            setActivationProgress(progress);
 
-            // Update shake
-            if (progressRef.current > 0.1) {
-                shakeRef.current = {
-                    x: (Math.random() - 0.5) * progressRef.current * 12,
-                    y: (Math.random() - 0.5) * progressRef.current * 12,
-                };
-            } else {
-                shakeRef.current = { x: 0, y: 0 };
+            // ── Update shake via direct DOM manipulation (no React re-render) ──
+            if (progress > 0.1) {
+                const sx = (Math.random() - 0.5) * progress * 12;
+                const sy = (Math.random() - 0.5) * progress * 12;
+                if (sceneRootStyleRef.current) {
+                    sceneRootStyleRef.current.textContent = `html, body { overflow: hidden !important; } .scene-root { transform: translate(${sx}px, ${sy}px); }`;
+                }
+            } else if (sceneRootStyleRef.current) {
+                sceneRootStyleRef.current.textContent = "";
             }
-            setShake({ ...shakeRef.current });
+
+            // ── Update glow via direct DOM manipulation ──
+            if (glowRef.current) {
+                if (progress > 0.15) {
+                    glowRef.current.style.display = "";
+                    glowRef.current.style.background = `radial-gradient(circle at 50% 50%, rgba(255, 255, 255, ${progress * 0.6}) 0%, rgba(220, 220, 220, ${progress * 0.3}) 30%, transparent 70%)`;
+                } else {
+                    glowRef.current.style.display = "none";
+                }
+            }
+
+            // ── Update dust canvas opacity ──
+            if (canvasRef.current) {
+                canvasRef.current.style.opacity = progress > 0.05 ? "1" : "0";
+            }
 
             // Check if climax reached
-            if (progressRef.current >= 1 && !flashing) {
+            if (progress >= 1 && !flashing) {
                 setFlashing(true);
                 holdingRef.current = false;
+                if (flashRef.current) {
+                    flashRef.current.style.opacity = "1";
+                }
                 setTimeout(() => {
                     setTransitioned(true);
                     onTransitionComplete();
@@ -157,14 +185,14 @@ export default function StargateActivation({
 
             // ── Draw dust particles ──
             const canvas = canvasRef.current;
-            if (canvas && progressRef.current > 0.05) {
+            if (canvas && progress > 0.05) {
                 const ctx = canvas.getContext("2d");
                 if (ctx) {
                     const w = canvas.width;
                     const h = canvas.height;
                     ctx.clearRect(0, 0, w, h);
 
-                    const intensity = progressRef.current;
+                    const intensity = progress;
                     dustParticles.current.forEach((p) => {
                         // Update position
                         p.y += p.speed * dt * (0.5 + intensity * 2);
@@ -232,41 +260,27 @@ export default function StargateActivation({
 
     return (
         <>
-            {/* Screen shake wrapper — applies to entire viewport via CSS */}
-            {progress > 0.1 && (
-                <style>{`
-                    html, body {
-                        overflow: hidden !important;
-                    }
-                    .scene-root {
-                        transform: translate(${shake.x}px, ${shake.y}px);
-                    }
-                `}</style>
-            )}
-
-            {/* Dust particle canvas */}
+            {/* Dust particle canvas — opacity controlled via direct DOM manipulation */}
             <canvas
                 ref={canvasRef}
                 className="pointer-events-none fixed inset-0 z-30"
-                style={{ opacity: progress > 0.05 ? 1 : 0 }}
+                style={{ opacity: 0 }}
             />
 
-            {/* White glow from center */}
-            {progress > 0.15 && (
-                <div
-                    className="pointer-events-none fixed inset-0 z-20"
-                    style={{
-                        background: `radial-gradient(circle at 50% 50%, rgba(255, 255, 255, ${progress * 0.6}) 0%, rgba(220, 220, 220, ${progress * 0.3}) 30%, transparent 70%)`,
-                    }}
-                />
-            )}
+            {/* White glow from center — background controlled via direct DOM manipulation */}
+            <div
+                ref={glowRef}
+                className="pointer-events-none fixed inset-0 z-20"
+                style={{ display: "none" }}
+            />
 
             {/* White flash */}
             <div
+                ref={flashRef}
                 className="pointer-events-none fixed inset-0 z-40"
                 style={{
                     backgroundColor: "white",
-                    opacity: flashing ? 1 : 0,
+                    opacity: 0,
                     transition: `opacity ${FLASH_DURATION / 2}ms ease-in`,
                 }}
             />

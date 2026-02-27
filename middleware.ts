@@ -2,6 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+    // Only run auth refresh on admin routes — public visitors skip the
+    // Supabase round-trip entirely, saving ~50-200ms of latency per request.
+    const isAdminRoute = request.nextUrl.pathname.startsWith("/admin");
+    if (!isAdminRoute) {
+        return NextResponse.next();
+    }
+
     let supabaseResponse = NextResponse.next({
         request,
     });

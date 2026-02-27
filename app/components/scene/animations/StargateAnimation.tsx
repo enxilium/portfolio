@@ -53,9 +53,23 @@ export default function StargateAnimation({ scene }: StargateAnimationProps) {
         if (sg2) stargate2.current = sg2;
     }, [scene]);
 
+    // Whether the stargate is visible/active and should keep spinning
+    const isVisibleRef = useRef(true);
+    useEffect(() => {
+        const unsub = useStore.subscribe((state) => {
+            // Stop spinning when the post-stargate scene takes over
+            isVisibleRef.current = !state.sceneTransitioned;
+            if (isVisibleRef.current) invalidate();
+        });
+        return unsub;
+    }, [invalidate]);
+
     useFrame((_, delta) => {
+        if (!isVisibleRef.current) return;
+
         const sg1 = stargate1.current;
         const sg2 = stargate2.current;
+        if (!sg1 && !sg2) return;
 
         // Blend between base speed and max speed based on activation progress
         const activation = activationRef.current;

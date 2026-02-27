@@ -9,16 +9,12 @@ const isDev = process.env.NODE_ENV === "development";
 
 // Prefix used to find rock objects in the scene
 const ROCK_PREFIX = "tyFlow_node_";
-// Default repel strength — overridden by store
-// const REPEL_STRENGTH = 1;
 // Radius around cursor that affects rocks (in NDC units; 1.0 = half the screen)
 const REPEL_RADIUS = 0.6;
 // How quickly rocks move away / return (lerp factor)
 const MOVE_SPEED = 0.04;
 // Oscillation amplitude (scene units) — how far rocks drift
 const DRIFT_AMPLITUDE = 0.3;
-// Default drift speed — overridden by store
-// const DRIFT_SPEED = 0.4;
 
 // ── Free-view (3D) mode constants ──
 // Y height of the invisible plane used for cursor projection in 3D mode
@@ -28,15 +24,22 @@ const REPEL_RADIUS_3D = 30;
 // Repel strength in world units for 3D mode
 const REPEL_STRENGTH_3D = 3;
 
-interface RockData {
-    object: THREE.Object3D;
+// Per-instance animation data (world-space transforms)
+interface InstanceData {
     basePosition: THREE.Vector3;
-    // Per-rock random phase offsets for X, Y, Z oscillation
+    currentPosition: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
     phaseX: number;
     phaseY: number;
     phaseZ: number;
-    // Per-rock random speed multiplier for variation
     speedMul: number;
+}
+
+// A group of rocks sharing the same geometry + material, rendered as one draw call
+interface InstanceGroup {
+    mesh: THREE.InstancedMesh;
+    instances: InstanceData[];
 }
 
 interface RockAnimationProps {
@@ -44,7 +47,7 @@ interface RockAnimationProps {
 }
 
 export default function RockAnimation({ scene }: RockAnimationProps) {
-    const rocks = useRef<RockData[]>([]);
+    const groups = useRef<InstanceGroup[]>([]);
     const pointer = useRef(new THREE.Vector2());
     const { gl } = useThree();
     const invalidate = useThree((state) => state.invalidate);
@@ -89,27 +92,107 @@ export default function RockAnimation({ scene }: RockAnimationProps) {
     );
     const cursorWorldPos = useRef(new THREE.Vector3());
     const tempVec = useRef(new THREE.Vector3());
+    // Reusable matrix for composing instance transforms
+    const tempMatrix = useRef(new THREE.Matrix4());
 
-    // Collect all rock objects on mount
+    // ── Build instanced meshes from scene rocks ──
     useEffect(() => {
         scene.updateMatrixWorld(true);
-        const collected: RockData[] = [];
 
+        // Collect all rock Mesh objects from the scene
+        const rockMeshes: THREE.Mesh[] = [];
         scene.traverse((child) => {
-            if (child.name.startsWith(ROCK_PREFIX)) {
-                collected.push({
-                    object: child,
-                    basePosition: child.position.clone(),
+            if (
+                child.name.startsWith(ROCK_PREFIX) &&
+                (child as THREE.Mesh).isMesh
+            ) {
+                rockMeshes.push(child as THREE.Mesh);
+            }
+        });
+
+        if (rockMeshes.length === 0) return;
+
+        // Group rocks by shared geometry + material so each group becomes one draw call.
+        // tyFlow exports typically share a single geometry/material across all particles.
+        const groupMap = new Map<string, THREE.Mesh[]>();
+        for (const mesh of rockMeshes) {
+            const matKey = Array.isArray(mesh.material)
+                ? mesh.material.map((m) => m.uuid).join(",")
+                : mesh.material.uuid;
+            const key = `${mesh.geometry.uuid}__${matKey}`;
+            let arr = groupMap.get(key);
+            if (!arr) {
+                arr = [];
+                groupMap.set(key, arr);
+            }
+            arr.push(mesh);
+        }
+
+        const newGroups: InstanceGroup[] = [];
+
+        for (const [, meshes] of groupMap) {
+            const template = meshes[0];
+            const count = meshes.length;
+
+            const instancedMesh = new THREE.InstancedMesh(
+                template.geometry,
+                template.material,
+                count,
+            );
+            // Rocks are spread across the scene — skip per-instance frustum culling
+            instancedMesh.frustumCulled = false;
+
+            const instances: InstanceData[] = [];
+
+            for (let i = 0; i < count; i++) {
+                const mesh = meshes[i];
+
+                // Decompose world transform for world-space instancing
+                const worldPos = new THREE.Vector3();
+                const worldQuat = new THREE.Quaternion();
+                const worldScale = new THREE.Vector3();
+                mesh.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+
+                instances.push({
+                    basePosition: worldPos.clone(),
+                    currentPosition: worldPos.clone(),
+                    quaternion: worldQuat,
+                    scale: worldScale,
                     phaseX: Math.random() * Math.PI * 2,
                     phaseY: Math.random() * Math.PI * 2,
                     phaseZ: Math.random() * Math.PI * 2,
                     speedMul: 0.7 + Math.random() * 0.6,
                 });
-            }
-        });
 
-        rocks.current = collected;
-    }, [scene]);
+                // Set initial instance matrix
+                tempMatrix.current.compose(worldPos, worldQuat, worldScale);
+                instancedMesh.setMatrixAt(i, tempMatrix.current);
+
+                // Hide the original mesh — it's now represented by the instance
+                mesh.visible = false;
+            }
+
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            scene.add(instancedMesh);
+
+            newGroups.push({ mesh: instancedMesh, instances });
+        }
+
+        groups.current = newGroups;
+        invalidate();
+
+        // Cleanup: remove instanced meshes and restore original visibility
+        return () => {
+            for (const group of newGroups) {
+                group.mesh.removeFromParent();
+                group.mesh.dispose();
+            }
+            for (const mesh of rockMeshes) {
+                mesh.visible = true;
+            }
+            groups.current = [];
+        };
+    }, [scene, invalidate]);
 
     // Track pointer position
     useEffect(() => {
@@ -127,8 +210,8 @@ export default function RockAnimation({ scene }: RockAnimationProps) {
     }, [gl, invalidate]);
 
     useFrame((state) => {
-        const allRocks = rocks.current;
-        if (allRocks.length === 0) return;
+        const allGroups = groups.current;
+        if (allGroups.length === 0) return;
 
         const time = state.clock.getElapsedTime();
         const cam = state.camera;
@@ -152,75 +235,98 @@ export default function RockAnimation({ scene }: RockAnimationProps) {
             );
         }
 
-        for (let i = 0; i < allRocks.length; i++) {
-            const rock = allRocks[i];
-            const { object, basePosition, phaseX, phaseY, phaseZ, speedMul } =
-                rock;
+        for (let g = 0; g < allGroups.length; g++) {
+            const { mesh, instances } = allGroups[g];
 
-            // Compute oscillating drift offset
-            const t = time * driftSpeedRef.current * speedMul;
-            const driftX = Math.sin(t + phaseX) * DRIFT_AMPLITUDE;
-            const driftY = Math.sin(t * 0.7 + phaseY) * DRIFT_AMPLITUDE * 0.5;
-            const driftZ = Math.cos(t * 0.8 + phaseZ) * DRIFT_AMPLITUDE;
+            for (let i = 0; i < instances.length; i++) {
+                const inst = instances[i];
+                const {
+                    basePosition,
+                    currentPosition,
+                    quaternion,
+                    scale,
+                    phaseX,
+                    phaseY,
+                    phaseZ,
+                    speedMul,
+                } = inst;
 
-            // Drifted base position
-            targetPos.current.set(
-                basePosition.x + driftX,
-                basePosition.y + driftY,
-                basePosition.z + driftZ,
-            );
+                // Compute oscillating drift offset
+                const t = time * driftSpeedRef.current * speedMul;
+                const driftX = Math.sin(t + phaseX) * DRIFT_AMPLITUDE;
+                const driftY =
+                    Math.sin(t * 0.7 + phaseY) * DRIFT_AMPLITUDE * 0.5;
+                const driftZ = Math.cos(t * 0.8 + phaseZ) * DRIFT_AMPLITUDE;
 
-            if (freeView.current) {
-                // ── Free-view: full 3D world-space repulsion ──
-                if (hit3D) {
-                    tempVec.current.subVectors(
-                        targetPos.current,
-                        cursorWorldPos.current,
-                    );
-                    const dist = tempVec.current.length();
+                // Drifted base position
+                targetPos.current.set(
+                    basePosition.x + driftX,
+                    basePosition.y + driftY,
+                    basePosition.z + driftZ,
+                );
 
-                    if (dist < REPEL_RADIUS_3D && dist > 0.001) {
-                        const falloff = 1 - dist / REPEL_RADIUS_3D;
-                        const pushDist = REPEL_STRENGTH_3D * falloff * falloff;
+                if (freeView.current) {
+                    // ── Free-view: full 3D world-space repulsion ──
+                    if (hit3D) {
+                        tempVec.current.subVectors(
+                            targetPos.current,
+                            cursorWorldPos.current,
+                        );
+                        const dist = tempVec.current.length();
 
-                        tempVec.current.normalize();
+                        if (dist < REPEL_RADIUS_3D && dist > 0.001) {
+                            const falloff = 1 - dist / REPEL_RADIUS_3D;
+                            const pushDist =
+                                REPEL_STRENGTH_3D * falloff * falloff;
+
+                            tempVec.current.normalize();
+                            targetPos.current.addScaledVector(
+                                tempVec.current,
+                                pushDist,
+                            );
+                        }
+                    }
+                } else {
+                    // ── Default view: screen-space (NDC) repulsion ──
+                    projected.current.copy(targetPos.current).project(cam);
+                    const dx = projected.current.x - pointer.current.x;
+                    const dy = projected.current.y - pointer.current.y;
+                    const screenDist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (screenDist < REPEL_RADIUS && screenDist > 0.001) {
+                        const falloff = 1 - screenDist / REPEL_RADIUS;
+                        const pushDist =
+                            repelStrengthRef.current * falloff * falloff;
+
+                        // Normalize screen direction and convert to world push
+                        const invDist = 1 / screenDist;
+                        const ndx = dx * invDist;
+                        const ndy = dy * invDist;
+
                         targetPos.current.addScaledVector(
-                            tempVec.current,
-                            pushDist,
+                            camRight.current,
+                            ndx * pushDist,
+                        );
+                        targetPos.current.addScaledVector(
+                            camUp.current,
+                            ndy * pushDist,
                         );
                     }
                 }
-            } else {
-                // ── Default view: screen-space (NDC) repulsion ──
-                projected.current.copy(targetPos.current).project(cam);
-                const dx = projected.current.x - pointer.current.x;
-                const dy = projected.current.y - pointer.current.y;
-                const screenDist = Math.sqrt(dx * dx + dy * dy);
 
-                if (screenDist < REPEL_RADIUS && screenDist > 0.001) {
-                    const falloff = 1 - screenDist / REPEL_RADIUS;
-                    const pushDist =
-                        repelStrengthRef.current * falloff * falloff;
+                // Smooth lerp toward target
+                currentPosition.lerp(targetPos.current, MOVE_SPEED);
 
-                    // Normalize screen direction and convert to world push
-                    const invDist = 1 / screenDist;
-                    const ndx = dx * invDist;
-                    const ndy = dy * invDist;
-
-                    targetPos.current.addScaledVector(
-                        camRight.current,
-                        ndx * pushDist,
-                    );
-                    targetPos.current.addScaledVector(
-                        camUp.current,
-                        ndy * pushDist,
-                    );
-                }
+                // Compose world-space matrix and write to the instance buffer
+                tempMatrix.current.compose(currentPosition, quaternion, scale);
+                mesh.setMatrixAt(i, tempMatrix.current);
             }
 
-            object.position.lerp(targetPos.current, MOVE_SPEED);
+            mesh.instanceMatrix.needsUpdate = true;
         }
 
+        // Rocks are always drifting — keep requesting frames.
+        // (The drift is the primary visual animation; stopping it would be noticeable.)
         state.invalidate();
     });
 

@@ -32,6 +32,8 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
 
     const raycaster = useRef(new THREE.Raycaster());
     const pointer = useRef(new THREE.Vector2());
+    // Dirty flag — only raycast when the pointer actually moves
+    const pointerDirty = useRef(false);
     const { gl } = useThree();
     const invalidate = useThree((state) => state.invalidate);
     // Track last emitted hover state to avoid spamming the store
@@ -54,6 +56,10 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 if (child instanceof THREE.Mesh) meshes.push(child);
             });
             pillarRightMeshes.current = meshes;
+
+            // Compute bounding sphere for cheap raycast pre-test
+            const boxR = new THREE.Box3().setFromObject(pillarRight);
+            boundRight.current = boxR.getBoundingSphere(new THREE.Sphere());
         }
 
         // Pillar Left
@@ -67,6 +73,9 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 if (child instanceof THREE.Mesh) meshes.push(child);
             });
             pillarLeftMeshes.current = meshes;
+
+            const boxL = new THREE.Box3().setFromObject(pillarLeft);
+            boundLeft.current = boxL.getBoundingSphere(new THREE.Sphere());
         }
 
         // Pillar Back
@@ -80,6 +89,9 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 if (child instanceof THREE.Mesh) meshes.push(child);
             });
             pillarBackMeshes.current = meshes;
+
+            const boxB = new THREE.Box3().setFromObject(pillarBack);
+            boundBack.current = boxB.getBoundingSphere(new THREE.Sphere());
         }
     }, [scene]);
 
@@ -91,6 +103,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
             const rect = canvas.getBoundingClientRect();
             pointer.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             pointer.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            pointerDirty.current = true;
             invalidate();
         };
 
@@ -134,22 +147,84 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
     const camWorldPos = useRef(new THREE.Vector3());
     const pillarWorldPos = useRef(new THREE.Vector3());
     const targetQuat = useRef(new THREE.Quaternion());
+    // Pre-allocated up vector — reused across all three pillars (never mutated)
+    const UP = useRef(new THREE.Vector3(0, 1, 0));
+
+    // Bounding spheres for cheap raycast pre-test (computed once on mount)
+    const boundRight = useRef<THREE.Sphere | null>(null);
+    const boundLeft = useRef<THREE.Sphere | null>(null);
+    const boundBack = useRef<THREE.Sphere | null>(null);
+    // Pre-allocated ray for bounding sphere test
+    const tempRay = useRef(new THREE.Ray());
+
+    // Helper: test ray against bounding sphere before expensive mesh intersection
+    const rayHitsBound = (bound: THREE.Sphere | null): boolean => {
+        if (!bound) return true; // no bounds computed — fall through to mesh test
+        return tempRay.current.intersectsSphere(bound);
+    };
 
     // Check hover and animate both pillars with tilt
     useFrame((state) => {
-        raycaster.current.setFromCamera(pointer.current, state.camera);
         state.camera.getWorldPosition(camWorldPos.current);
 
-        // Pillar Right
-        const rightMeshes = pillarRightMeshes.current;
-        if (rightMeshes.length > 0) {
-            const intersects = raycaster.current.intersectObjects(
-                rightMeshes,
-                false,
-            );
-            hoveredRight.current = intersects.length > 0;
+        // ── Hover detection via raycasting ──
+        // Skip entirely when a pillar is focused (camera is transitioning —
+        // no hover detection needed, saves expensive ray-mesh intersection)
+        const skipRaycast = !!focusedPillar;
+
+        // Only raycast when the pointer has actually moved
+        if (!skipRaycast && pointerDirty.current) {
+            pointerDirty.current = false;
+            raycaster.current.setFromCamera(pointer.current, state.camera);
+            // Cache ray origin/direction for bounding sphere tests
+            tempRay.current.copy(raycaster.current.ray);
+
+            // Pillar Right
+            const rightMeshes = pillarRightMeshes.current;
+            if (rightMeshes.length > 0) {
+                if (rayHitsBound(boundRight.current)) {
+                    const intersects = raycaster.current.intersectObjects(
+                        rightMeshes,
+                        false,
+                    );
+                    hoveredRight.current = intersects.length > 0;
+                } else {
+                    hoveredRight.current = false;
+                }
+            }
+
+            // Pillar Left
+            const leftMeshes = pillarLeftMeshes.current;
+            if (leftMeshes.length > 0) {
+                if (rayHitsBound(boundLeft.current)) {
+                    const intersects = raycaster.current.intersectObjects(
+                        leftMeshes,
+                        false,
+                    );
+                    hoveredLeft.current = intersects.length > 0;
+                } else {
+                    hoveredLeft.current = false;
+                }
+            }
+
+            // Pillar Back
+            const backMeshes = pillarBackMeshes.current;
+            if (backMeshes.length > 0) {
+                if (rayHitsBound(boundBack.current)) {
+                    const intersects = raycaster.current.intersectObjects(
+                        backMeshes,
+                        false,
+                    );
+                    hoveredBack.current = intersects.length > 0;
+                } else {
+                    hoveredBack.current = false;
+                }
+            }
         }
 
+        // ── Tilt animation (runs regardless of raycast) ──
+
+        // Pillar Right
         const pillarR = pillarRightRef.current;
         const baseQR = baseQuatRight.current;
         if (pillarR && baseQR) {
@@ -160,7 +235,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                     .subVectors(camWorldPos.current, pillarWorldPos.current)
                     .normalize();
                 // Tilt axis is perpendicular to both the up vector and the direction to camera
-                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltAxis.current.cross(UP.current).normalize();
                 tiltQuat.current.setFromAxisAngle(
                     tiltAxis.current,
                     -TILT_ANGLE,
@@ -173,15 +248,6 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         }
 
         // Pillar Left
-        const leftMeshes = pillarLeftMeshes.current;
-        if (leftMeshes.length > 0) {
-            const intersects = raycaster.current.intersectObjects(
-                leftMeshes,
-                false,
-            );
-            hoveredLeft.current = intersects.length > 0;
-        }
-
         const pillarL = pillarLeftRef.current;
         const baseQL = baseQuatLeft.current;
         if (pillarL && baseQL) {
@@ -190,7 +256,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 tiltAxis.current
                     .subVectors(camWorldPos.current, pillarWorldPos.current)
                     .normalize();
-                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltAxis.current.cross(UP.current).normalize();
                 tiltQuat.current.setFromAxisAngle(
                     tiltAxis.current,
                     -TILT_ANGLE,
@@ -203,15 +269,6 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
         }
 
         // Pillar Back
-        const backMeshes = pillarBackMeshes.current;
-        if (backMeshes.length > 0) {
-            const intersects = raycaster.current.intersectObjects(
-                backMeshes,
-                false,
-            );
-            hoveredBack.current = intersects.length > 0;
-        }
-
         const pillarB = pillarBackRef.current;
         const baseQB = baseQuatBack.current;
         if (pillarB && baseQB) {
@@ -220,7 +277,7 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 tiltAxis.current
                     .subVectors(camWorldPos.current, pillarWorldPos.current)
                     .normalize();
-                tiltAxis.current.cross(new THREE.Vector3(0, 1, 0)).normalize();
+                tiltAxis.current.cross(UP.current).normalize();
                 tiltQuat.current.setFromAxisAngle(
                     tiltAxis.current,
                     -TILT_ANGLE,
@@ -259,8 +316,46 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
                 currentHover && !focused && !freeView ? "pointer" : "auto";
         }
 
-        // Invalidate to request next frame (demand mode)
-        state.invalidate();
+        // Only keep requesting frames while pillars are actively tilting
+        const isAnyHovered =
+            hoveredRight.current || hoveredLeft.current || hoveredBack.current;
+        const isAnyAnimating = (() => {
+            const EPS = 0.0005;
+            if (pillarRightRef.current && baseQuatRight.current) {
+                if (
+                    pillarRightRef.current.quaternion.angleTo(
+                        baseQuatRight.current,
+                    ) > EPS &&
+                    !hoveredRight.current
+                )
+                    return true;
+                if (hoveredRight.current) return true;
+            }
+            if (pillarLeftRef.current && baseQuatLeft.current) {
+                if (
+                    pillarLeftRef.current.quaternion.angleTo(
+                        baseQuatLeft.current,
+                    ) > EPS &&
+                    !hoveredLeft.current
+                )
+                    return true;
+                if (hoveredLeft.current) return true;
+            }
+            if (pillarBackRef.current && baseQuatBack.current) {
+                if (
+                    pillarBackRef.current.quaternion.angleTo(
+                        baseQuatBack.current,
+                    ) > EPS &&
+                    !hoveredBack.current
+                )
+                    return true;
+                if (hoveredBack.current) return true;
+            }
+            return false;
+        })();
+        if (isAnyHovered || isAnyAnimating || focusedPillar) {
+            state.invalidate();
+        }
     });
 
     return null;

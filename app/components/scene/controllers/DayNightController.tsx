@@ -58,11 +58,22 @@ export default function DayNightController({
         "/overcast_soil_puresky_4k-night.hdr",
     );
 
-    // Prepare textures on mount
+    // Prepare textures on mount and set initial background/environment
     useEffect(() => {
         dayHDR.mapping = THREE.EquirectangularReflectionMapping;
         nightHDR.mapping = THREE.EquirectangularReflectionMapping;
-    }, [dayHDR, nightHDR]);
+
+        // Set initial background/environment from DayNightController
+        // (single source of truth — no separate <Environment> component)
+        scene.background = dayHDR;
+        scene.environment = dayHDR;
+        const bgScene = scene as unknown as {
+            backgroundIntensity: number;
+            environmentIntensity: number;
+        };
+        bgScene.backgroundIntensity = DAY_BG_INTENSITY;
+        bgScene.environmentIntensity = DAY_ENV_INTENSITY;
+    }, [dayHDR, nightHDR, scene]);
 
     // Moonlight — added imperatively
     const moonLight = useRef<THREE.DirectionalLight | null>(null);
@@ -77,8 +88,13 @@ export default function DayNightController({
 
     // Track isNight via ref to avoid useFrame closure issues
     const isNightRef = useRef(useStore.getState().isNight);
+    // Whether the day/night transition is still actively lerping
+    const isTransitioning = useRef(false);
     useEffect(() => {
         const unsub = useStore.subscribe((state) => {
+            if (state.isNight !== isNightRef.current) {
+                isTransitioning.current = true;
+            }
             isNightRef.current = state.isNight;
             invalidate();
         });
@@ -218,7 +234,45 @@ export default function DayNightController({
         );
         scene.userData.starsOpacity = starsOpacity.current;
 
-        invalidate();
+        // Only keep requesting frames while values are still converging
+        if (isTransitioning.current) {
+            // Check if all values have converged (epsilon-based)
+            const EPS = 0.002;
+            const ambientDone = ambient
+                ? Math.abs(
+                      ambient.intensity -
+                          (night
+                              ? NIGHT_AMBIENT_INTENSITY
+                              : DAY_AMBIENT_INTENSITY),
+                  ) < EPS
+                : true;
+            const spotDone = spot
+                ? Math.abs(
+                      spot.intensity -
+                          (night ? NIGHT_SPOT_INTENSITY : DAY_SPOT_INTENSITY),
+                  ) < EPS
+                : true;
+            const moonDone = moon
+                ? Math.abs(
+                      moon.intensity -
+                          (night ? NIGHT_MOON_INTENSITY : DAY_MOON_INTENSITY),
+                  ) < EPS
+                : true;
+            const bgDone =
+                !crossfading.current &&
+                Math.abs(
+                    bgIntensity.current -
+                        (night ? NIGHT_BG_INTENSITY : DAY_BG_INTENSITY),
+                ) < EPS;
+            const starsDone =
+                Math.abs(starsOpacity.current - targetStars) < EPS;
+
+            if (ambientDone && spotDone && moonDone && bgDone && starsDone) {
+                isTransitioning.current = false;
+            } else {
+                invalidate();
+            }
+        }
     });
 
     return null;
