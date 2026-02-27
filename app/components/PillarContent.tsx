@@ -8,6 +8,7 @@ import type { BlogPost, Experience } from "../lib/supabase/types";
 // ── Slide shape used by the carousel ──
 interface BlogSlide {
     title: string;
+    slug: string;
     date: string;
     body: string;
     href: string;
@@ -15,6 +16,7 @@ interface BlogSlide {
 
 interface ExperienceSlide {
     title: string;
+    slug: string;
     company: string;
     period: string;
     body: string;
@@ -26,6 +28,7 @@ interface ExperienceSlide {
 const FALLBACK_BLOG_SLIDES: BlogSlide[] = [
     {
         title: "No posts yet",
+        slug: "",
         date: "",
         body: "Blog posts will appear here once published via the admin panel.",
         href: "#",
@@ -35,6 +38,7 @@ const FALLBACK_BLOG_SLIDES: BlogSlide[] = [
 const FALLBACK_EXPERIENCE_SLIDES: ExperienceSlide[] = [
     {
         title: "No experiences yet",
+        slug: "",
         company: "",
         period: "",
         body: "Experiences will appear here once published via the admin panel.",
@@ -61,6 +65,7 @@ const SLIDE_FADE_MS = 300;
 
 export default function PillarContent() {
     const focusedPillar = useStore((s) => s.focusedPillar);
+    const contentOverlay = useStore((s) => s.contentOverlay);
 
     // ── Supabase data ──
     const [blogSlides, setBlogSlides] =
@@ -93,6 +98,7 @@ export default function PillarContent() {
                             >[]
                         ).map((p) => ({
                             title: p.title,
+                            slug: p.slug,
                             date: fmtDate(p.created_at),
                             body: p.synopsis,
                             href: `/blog/${p.slug}`,
@@ -126,6 +132,7 @@ export default function PillarContent() {
                             >[]
                         ).map((e) => ({
                             title: e.position_title,
+                            slug: e.slug,
                             company: e.organization,
                             period: e.is_ongoing
                                 ? `${fmtDate(e.start_date)} — Present`
@@ -228,8 +235,9 @@ export default function PillarContent() {
             className="pointer-events-none fixed inset-0 z-20 flex items-center"
             style={{
                 justifyContent: isLeft ? "flex-start" : "flex-end",
-                opacity: fadedIn ? 1 : 0,
+                opacity: fadedIn && !contentOverlay ? 1 : 0,
                 transition: `opacity ${FADE_DURATION_MS}ms ease-in-out`,
+                pointerEvents: contentOverlay ? "none" : undefined,
             }}
         >
             <div
@@ -357,10 +365,17 @@ export default function PillarContent() {
                         </p>
                     </div>
 
-                    {/* Read more button — fixed position between text and nav */}
-                    <a
-                        href={slide.href}
-                        target="_blank"
+                    {/* Read more button — opens holographic content overlay */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (slide.slug) {
+                                useStore.getState().setContentOverlay({
+                                    type: isLeft ? "blog" : "experience",
+                                    slug: slide.slug,
+                                });
+                            }
+                        }}
                         style={{
                             alignSelf: "flex-start",
                             display:
@@ -392,7 +407,7 @@ export default function PillarContent() {
                         }}
                     >
                         READ MORE
-                    </a>
+                    </button>
                 </div>
                 {/* end card container */}
 

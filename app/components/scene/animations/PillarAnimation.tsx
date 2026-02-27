@@ -104,6 +104,8 @@ export default function PillarAnimation({ scene }: PillarAnimationProps) {
 
         const onClick = () => {
             const store = useStore.getState();
+            // Don't allow pillar interaction while content overlay is open
+            if (store.contentOverlay) return;
             // Don't allow pillar focus in free-look mode
             if (store.freeView) return;
             // If already focused, clicking again returns to default view

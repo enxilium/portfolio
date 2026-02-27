@@ -93,7 +93,7 @@ export default function ControlPanel() {
     return (
         <div
             ref={panelRef}
-            className="absolute top-4 right-4 z-50 flex flex-col items-end"
+            className="pointer-events-auto flex flex-col items-end"
         >
             <div className="flex items-center gap-2">
                 {/* Audio mute/unmute button */}

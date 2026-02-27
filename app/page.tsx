@@ -21,6 +21,7 @@ import StargateActivation from "./components/StargateActivation";
 import PostStargateScene from "./components/PostStargateScene";
 import PillarTooltip from "./components/PillarTooltip";
 import PillarContent from "./components/PillarContent";
+import ContentOverlay from "./components/ContentOverlay";
 import AcknowledgmentsModal from "./components/AcknowledgmentsModal";
 import useStore from "./lib/store";
 
@@ -173,6 +174,9 @@ function Overlays() {
             {/* Pillar content carousel (focused pillar view) */}
             {introComplete && !sceneTransitioned && <PillarContent />}
 
+            {/* Holographic content overlay (full post/experience viewer) */}
+            {introComplete && !sceneTransitioned && <ContentOverlay />}
+
             {/* Acknowledgments modal (back pillar click) */}
             {introComplete && !sceneTransitioned && <AcknowledgmentsModal />}
 
@@ -253,7 +257,12 @@ export default function Scene() {
             <Overlays />
 
             <RainEffect />
-            <ControlPanelWrapper />
+
+            {/* Navbar — positions controls above the canvas in document flow */}
+            <nav className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-end p-4">
+                <ControlPanelWrapper />
+            </nav>
+
             <AudioManager />
         </div>
     );

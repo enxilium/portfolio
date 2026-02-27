@@ -139,21 +139,21 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                 <ToolbarButton
                     onClick={() => editor.chain().focus().toggleBold().run()}
                     active={editor.isActive("bold")}
-                    title="Bold"
+                    title="Bold (Ctrl+B)"
                 >
                     B
                 </ToolbarButton>
                 <ToolbarButton
                     onClick={() => editor.chain().focus().toggleItalic().run()}
                     active={editor.isActive("italic")}
-                    title="Italic"
+                    title="Italic (Ctrl+I)"
                 >
                     I
                 </ToolbarButton>
                 <ToolbarButton
                     onClick={() => editor.chain().focus().toggleStrike().run()}
                     active={editor.isActive("strike")}
-                    title="Strikethrough"
+                    title="Strikethrough (Ctrl+Shift+X)"
                 >
                     S
                 </ToolbarButton>
@@ -165,7 +165,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleHeading({ level: 1 }).run()
                     }
                     active={editor.isActive("heading", { level: 1 })}
-                    title="Heading 1"
+                    title="Heading 1 (Ctrl+Alt+1)"
                 >
                     H1
                 </ToolbarButton>
@@ -174,7 +174,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleHeading({ level: 2 }).run()
                     }
                     active={editor.isActive("heading", { level: 2 })}
-                    title="Heading 2"
+                    title="Heading 2 (Ctrl+Alt+2)"
                 >
                     H2
                 </ToolbarButton>
@@ -183,7 +183,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleHeading({ level: 3 }).run()
                     }
                     active={editor.isActive("heading", { level: 3 })}
-                    title="Heading 3"
+                    title="Heading 3 (Ctrl+Alt+3)"
                 >
                     H3
                 </ToolbarButton>
@@ -195,7 +195,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleBulletList().run()
                     }
                     active={editor.isActive("bulletList")}
-                    title="Bullet List"
+                    title="Bullet List (Ctrl+Shift+8)"
                 >
                     • List
                 </ToolbarButton>
@@ -204,7 +204,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleOrderedList().run()
                     }
                     active={editor.isActive("orderedList")}
-                    title="Numbered List"
+                    title="Numbered List (Ctrl+Shift+7)"
                 >
                     1. List
                 </ToolbarButton>
@@ -213,7 +213,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleBlockquote().run()
                     }
                     active={editor.isActive("blockquote")}
-                    title="Quote"
+                    title="Quote (Ctrl+Shift+B)"
                 >
                     &ldquo; Quote
                 </ToolbarButton>
@@ -222,7 +222,7 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                         editor.chain().focus().toggleCodeBlock().run()
                     }
                     active={editor.isActive("codeBlock")}
-                    title="Code Block"
+                    title="Code Block (Ctrl+Alt+C)"
                 >
                     {"</>"}
                 </ToolbarButton>
@@ -254,8 +254,37 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
                 </ToolbarButton>
             </div>
 
-            {/* Editor area */}
-            <EditorContent editor={editor} />
+            {/* Side-by-side: Editor + Preview */}
+            <div className="grid grid-cols-2 divide-x divide-white/10">
+                {/* Editor pane */}
+                <div className="flex flex-col">
+                    <span
+                        className="px-3 py-1.5 text-[10px] tracking-[2px] uppercase text-white/30 border-b border-white/5"
+                        style={{
+                            fontFamily: "var(--font-geist-mono), monospace",
+                        }}
+                    >
+                        Edit
+                    </span>
+                    <EditorContent editor={editor} />
+                </div>
+
+                {/* Preview pane */}
+                <div className="flex flex-col">
+                    <span
+                        className="px-3 py-1.5 text-[10px] tracking-[2px] uppercase text-white/30 border-b border-white/5"
+                        style={{
+                            fontFamily: "var(--font-geist-mono), monospace",
+                        }}
+                    >
+                        Preview
+                    </span>
+                    <div
+                        className="content-body overflow-auto px-4 py-3 min-h-[300px]"
+                        dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
+                    />
+                </div>
+            </div>
 
             {/* Hidden file input for image uploads */}
             <input

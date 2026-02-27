@@ -58,7 +58,7 @@ export default async function ExperiencePage({ params }: PageProps) {
         <div className="min-h-screen bg-[#0a0a0a]">
             {/* Cover image */}
             {exp.cover_image_url && (
-                <div className="relative h-64 w-full sm:h-80 md:h-96">
+                <div className="relative h-32 w-full sm:h-40">
                     <img
                         src={exp.cover_image_url}
                         alt={exp.position_title}
@@ -68,7 +68,7 @@ export default async function ExperiencePage({ params }: PageProps) {
                 </div>
             )}
 
-            <article className="mx-auto max-w-2xl px-4 sm:px-6 py-8 sm:py-12">
+            <article className="mx-auto max-w-5xl px-6 sm:px-10 py-8 sm:py-12">
                 {/* Back link */}
                 <Link
                     href="/"

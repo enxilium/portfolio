@@ -30,6 +30,8 @@ interface SettingsState {
     focusedPillar: "left" | "right" | null;
     // Whether the acknowledgments modal is open
     acknowledgmentsOpen: boolean;
+    // Content overlay — which post/experience is currently open in the overlay
+    contentOverlay: { type: "blog" | "experience"; slug: string } | null;
     // Actions
     setDriftSpeed: (speed: number) => void;
     setRepelStrength: (strength: number) => void;
@@ -46,6 +48,9 @@ interface SettingsState {
     setHoveredPillar: (v: "left" | "right" | "back" | null) => void;
     setFocusedPillar: (v: "left" | "right" | null) => void;
     setAcknowledgmentsOpen: (v: boolean) => void;
+    setContentOverlay: (
+        v: { type: "blog" | "experience"; slug: string } | null,
+    ) => void;
 }
 
 const useStore = create<SettingsState>((set) => ({
@@ -67,6 +72,7 @@ const useStore = create<SettingsState>((set) => ({
     hoveredPillar: null,
     focusedPillar: null,
     acknowledgmentsOpen: false,
+    contentOverlay: null,
     setDriftSpeed: (speed) => set({ driftSpeed: speed }),
     setRepelStrength: (strength) => set({ repelStrength: strength }),
     toggleNight: () => set((s) => ({ isNight: !s.isNight })),
@@ -87,6 +93,7 @@ const useStore = create<SettingsState>((set) => ({
     setHoveredPillar: (v) => set({ hoveredPillar: v }),
     setFocusedPillar: (v) => set({ focusedPillar: v }),
     setAcknowledgmentsOpen: (v) => set({ acknowledgmentsOpen: v }),
+    setContentOverlay: (v) => set({ contentOverlay: v }),
 }));
 
 export default useStore;

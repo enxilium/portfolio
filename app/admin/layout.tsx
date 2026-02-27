@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./tiptap.css";
+import "../content.css";
 
 export const metadata: Metadata = {
     title: "Admin Panel",

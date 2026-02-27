@@ -77,6 +77,8 @@ export default function StargateActivation({
             if (e.button !== 0 || freeView || transitioned) return;
             // Don't activate stargate while interacting with pillars
             if (hoveredPillar || focusedPillar) return;
+            // Don't activate stargate while content overlay is open
+            if (useStore.getState().contentOverlay) return;
             // Only register hold on the canvas — ignore clicks on UI elements
             const target = e.target as HTMLElement;
             if (target.closest("button, input, label, [role='button'], .z-50"))
