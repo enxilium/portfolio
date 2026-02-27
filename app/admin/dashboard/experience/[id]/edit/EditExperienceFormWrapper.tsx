@@ -16,6 +16,7 @@ export default function EditExperienceFormWrapper({
 }: EditExperienceFormWrapperProps) {
     return (
         <ExperienceForm
+            draftKey={`exp-${experience.id}`}
             initial={{
                 position_title: experience.position_title,
                 organization: experience.organization,

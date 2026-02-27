@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import TiptapEditor from "./TiptapEditor";
 import ImageUpload from "./ImageUpload";
 
 // Max synopsis length enforced in UI and DB
 const SYNOPSIS_MAX = 160;
 
+// Auto-save debounce delay in milliseconds (2 seconds after last change)
+const AUTO_SAVE_DEBOUNCE = 2_000;
+
 interface BlogFormProps {
+    /** Unique key for localStorage draft (e.g. "blog-new" or "blog-{id}") */
+    draftKey: string;
     initial?: {
         title: string;
         synopsis: string;
@@ -27,20 +32,88 @@ interface BlogFormProps {
 }
 
 export default function BlogForm({
+    draftKey,
     initial,
     onSubmit,
     submitLabel,
     onDelete,
 }: BlogFormProps) {
-    const [title, setTitle] = useState(initial?.title ?? "");
-    const [synopsis, setSynopsis] = useState(initial?.synopsis ?? "");
-    const [coverUrl, setCoverUrl] = useState<string | null>(
-        initial?.cover_image_url ?? null,
+    // ── Restore draft from localStorage on mount ──
+    const storageKey = `draft:${draftKey}`;
+    const restoredDraft = useRef<{
+        title: string;
+        synopsis: string;
+        cover_image_url: string | null;
+        content: string;
+        published: boolean;
+    } | null>(null);
+
+    // Read draft synchronously before first render
+    if (restoredDraft.current === null) {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (raw) {
+                restoredDraft.current = JSON.parse(raw);
+            }
+        } catch {
+            // ignore parse errors
+        }
+        if (!restoredDraft.current) {
+            restoredDraft.current = {} as never; // sentinel: checked, nothing found
+        }
+    }
+
+    const draft =
+        "title" in (restoredDraft.current ?? {}) ? restoredDraft.current : null;
+
+    const [title, setTitle] = useState(draft?.title ?? initial?.title ?? "");
+    const [synopsis, setSynopsis] = useState(
+        draft?.synopsis ?? initial?.synopsis ?? "",
     );
-    const [content, setContent] = useState(initial?.content ?? "");
-    const [published, setPublished] = useState(initial?.published ?? false);
+    const [coverUrl, setCoverUrl] = useState<string | null>(
+        draft?.cover_image_url ?? initial?.cover_image_url ?? null,
+    );
+    const [content, setContent] = useState(
+        draft?.content ?? initial?.content ?? "",
+    );
+    const [published, setPublished] = useState(
+        draft?.published ?? initial?.published ?? false,
+    );
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
+    // ── Debounced auto-save to localStorage ──
+    const saveDraft = useCallback(() => {
+        try {
+            localStorage.setItem(
+                storageKey,
+                JSON.stringify({
+                    title,
+                    synopsis,
+                    cover_image_url: coverUrl,
+                    content,
+                    published,
+                }),
+            );
+            setLastAutoSave(new Date());
+        } catch {
+            // storage full or unavailable — silently skip
+        }
+    }, [storageKey, title, synopsis, coverUrl, content, published]);
+
+    // Save after a brief pause in editing
+    useEffect(() => {
+        const timer = setTimeout(saveDraft, AUTO_SAVE_DEBOUNCE);
+        return () => clearTimeout(timer);
+    }, [saveDraft]);
+
+    // Also save on beforeunload
+    useEffect(() => {
+        const handler = () => saveDraft();
+        window.addEventListener("beforeunload", handler);
+        return () => window.removeEventListener("beforeunload", handler);
+    }, [saveDraft]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -58,8 +131,14 @@ export default function BlogForm({
         if (result?.error) {
             setError(result.error);
             setSaving(false);
+        } else {
+            // Clear draft on successful save (server action will redirect)
+            try {
+                localStorage.removeItem(storageKey);
+            } catch {
+                /* ignore */
+            }
         }
-        // On success, the server action redirects
     };
 
     return (
@@ -175,7 +254,11 @@ export default function BlogForm({
                 >
                     Content
                 </label>
-                <TiptapEditor content={content} onChange={setContent} />
+                <TiptapEditor
+                    content={content}
+                    onChange={setContent}
+                    lastSaved={lastAutoSave}
+                />
             </div>
 
             {/* Published toggle */}
@@ -230,6 +313,21 @@ export default function BlogForm({
                     >
                         Delete
                     </button>
+                )}
+
+                {lastAutoSave && (
+                    <span
+                        className="ml-auto text-[10px] tracking-[1px] text-white/20"
+                        style={{
+                            fontFamily: "var(--font-geist-mono), monospace",
+                        }}
+                    >
+                        Draft saved{" "}
+                        {lastAutoSave.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
+                    </span>
                 )}
             </div>
         </form>

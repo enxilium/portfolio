@@ -129,7 +129,8 @@ body {
 
 /* ── Holographic content overlay ── */
 .holographic-overlay {
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 /* Animated scan lines */
@@ -262,6 +263,24 @@ body {
     height: auto;
     border-radius: 0.5rem;
     margin: 1.25rem 0;
+}
+
+.overlay-body figure.image-figure {
+    margin: 1.25rem 0;
+    text-align: center;
+}
+
+.overlay-body figure.image-figure img {
+    margin: 0 auto;
+}
+
+.overlay-body figure.image-figure figcaption {
+    margin-top: 0.5rem;
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.8125rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: center;
+    line-height: 1.5;
 }
 
 .overlay-body hr {

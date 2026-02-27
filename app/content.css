@@ -105,6 +105,24 @@
     margin: 1.25rem 0;
 }
 
+.content-body figure.image-figure {
+    margin: 1.25rem 0;
+    text-align: center;
+}
+
+.content-body figure.image-figure img {
+    margin: 0 auto;
+}
+
+.content-body figure.image-figure figcaption {
+    margin-top: 0.5rem;
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.8125rem;
+    color: rgba(255, 255, 255, 0.45);
+    text-align: center;
+    line-height: 1.5;
+}
+
 .content-body hr {
     border: none;
     border-top: 1px solid rgba(255, 255, 255, 0.1);

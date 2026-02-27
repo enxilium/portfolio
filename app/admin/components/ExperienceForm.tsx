@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import TiptapEditor from "./TiptapEditor";
 import ImageUpload from "./ImageUpload";
 
 // Max synopsis length enforced in UI and DB
 const SYNOPSIS_MAX = 160;
 
+// Auto-save debounce delay in milliseconds (2 seconds after last change)
+const AUTO_SAVE_DEBOUNCE = 2_000;
+
 interface ExperienceFormProps {
+    /** Unique key for localStorage draft (e.g. "exp-new" or "exp-{id}") */
+    draftKey: string;
     initial?: {
         position_title: string;
         organization: string;
@@ -37,31 +42,127 @@ interface ExperienceFormProps {
 }
 
 export default function ExperienceForm({
+    draftKey,
     initial,
     onSubmit,
     submitLabel,
     onDelete,
 }: ExperienceFormProps) {
+    // ── Restore draft from localStorage on mount ──
+    const storageKey = `draft:${draftKey}`;
+    const restoredDraft = useRef<{
+        position_title: string;
+        organization: string;
+        start_date: string;
+        end_date: string | null;
+        is_ongoing: boolean;
+        synopsis: string;
+        logo_url: string | null;
+        cover_image_url: string | null;
+        content: string;
+        published: boolean;
+    } | null>(null);
+
+    if (restoredDraft.current === null) {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (raw) {
+                restoredDraft.current = JSON.parse(raw);
+            }
+        } catch {
+            // ignore parse errors
+        }
+        if (!restoredDraft.current) {
+            restoredDraft.current = {} as never;
+        }
+    }
+
+    const draft =
+        "position_title" in (restoredDraft.current ?? {})
+            ? restoredDraft.current
+            : null;
+
     const [positionTitle, setPositionTitle] = useState(
-        initial?.position_title ?? "",
+        draft?.position_title ?? initial?.position_title ?? "",
     );
     const [organization, setOrganization] = useState(
-        initial?.organization ?? "",
+        draft?.organization ?? initial?.organization ?? "",
     );
-    const [startDate, setStartDate] = useState(initial?.start_date ?? "");
-    const [endDate, setEndDate] = useState(initial?.end_date ?? "");
-    const [isOngoing, setIsOngoing] = useState(initial?.is_ongoing ?? false);
-    const [synopsis, setSynopsis] = useState(initial?.synopsis ?? "");
+    const [startDate, setStartDate] = useState(
+        draft?.start_date ?? initial?.start_date ?? "",
+    );
+    const [endDate, setEndDate] = useState(
+        draft?.end_date ?? initial?.end_date ?? "",
+    );
+    const [isOngoing, setIsOngoing] = useState(
+        draft?.is_ongoing ?? initial?.is_ongoing ?? false,
+    );
+    const [synopsis, setSynopsis] = useState(
+        draft?.synopsis ?? initial?.synopsis ?? "",
+    );
     const [logoUrl, setLogoUrl] = useState<string | null>(
-        initial?.logo_url ?? null,
+        draft?.logo_url ?? initial?.logo_url ?? null,
     );
     const [coverUrl, setCoverUrl] = useState<string | null>(
-        initial?.cover_image_url ?? null,
+        draft?.cover_image_url ?? initial?.cover_image_url ?? null,
     );
-    const [content, setContent] = useState(initial?.content ?? "");
-    const [published, setPublished] = useState(initial?.published ?? false);
+    const [content, setContent] = useState(
+        draft?.content ?? initial?.content ?? "",
+    );
+    const [published, setPublished] = useState(
+        draft?.published ?? initial?.published ?? false,
+    );
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
+    // ── Debounced auto-save to localStorage ──
+    const saveDraft = useCallback(() => {
+        try {
+            localStorage.setItem(
+                storageKey,
+                JSON.stringify({
+                    position_title: positionTitle,
+                    organization,
+                    start_date: startDate,
+                    end_date: isOngoing ? null : endDate || null,
+                    is_ongoing: isOngoing,
+                    synopsis,
+                    logo_url: logoUrl,
+                    cover_image_url: coverUrl,
+                    content,
+                    published,
+                }),
+            );
+            setLastAutoSave(new Date());
+        } catch {
+            // storage full or unavailable
+        }
+    }, [
+        storageKey,
+        positionTitle,
+        organization,
+        startDate,
+        endDate,
+        isOngoing,
+        synopsis,
+        logoUrl,
+        coverUrl,
+        content,
+        published,
+    ]);
+
+    // Save after a brief pause in editing
+    useEffect(() => {
+        const timer = setTimeout(saveDraft, AUTO_SAVE_DEBOUNCE);
+        return () => clearTimeout(timer);
+    }, [saveDraft]);
+
+    useEffect(() => {
+        const handler = () => saveDraft();
+        window.addEventListener("beforeunload", handler);
+        return () => window.removeEventListener("beforeunload", handler);
+    }, [saveDraft]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -84,6 +185,12 @@ export default function ExperienceForm({
         if (result?.error) {
             setError(result.error);
             setSaving(false);
+        } else {
+            try {
+                localStorage.removeItem(storageKey);
+            } catch {
+                /* ignore */
+            }
         }
     };
 
@@ -317,7 +424,11 @@ export default function ExperienceForm({
                 <label className={labelClass} style={{ fontFamily: monoFont }}>
                     Content
                 </label>
-                <TiptapEditor content={content} onChange={setContent} />
+                <TiptapEditor
+                    content={content}
+                    onChange={setContent}
+                    lastSaved={lastAutoSave}
+                />
             </div>
 
             {/* Published toggle */}
@@ -370,6 +481,19 @@ export default function ExperienceForm({
                     >
                         Delete
                     </button>
+                )}
+
+                {lastAutoSave && (
+                    <span
+                        className="ml-auto text-[10px] tracking-[1px] text-white/20"
+                        style={{ fontFamily: monoFont }}
+                    >
+                        Draft saved{" "}
+                        {lastAutoSave.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
+                    </span>
                 )}
             </div>
         </form>

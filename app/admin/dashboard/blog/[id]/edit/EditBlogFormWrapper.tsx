@@ -13,6 +13,7 @@ export default function EditBlogFormWrapper({
 }: EditBlogFormWrapperProps) {
     return (
         <BlogForm
+            draftKey={`blog-${post.id}`}
             initial={{
                 title: post.title,
                 synopsis: post.synopsis,

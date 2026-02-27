@@ -5,9 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface CropModalProps {
     /** The object URL or data URL of the source image */
     imageSrc: string;
-    /** Desired output aspect ratio (width / height) */
-    aspectRatio: number;
-    /** Output width in px (height derived from aspect ratio) */
+    /**
+     * Desired output aspect ratio (width / height).
+     * When omitted the crop box is free-form (any ratio).
+     */
+    aspectRatio?: number;
+    /** Output width in px (height derived from crop region) */
     outputWidth: number;
     /** Convert result to grayscale */
     grayscale?: boolean;
@@ -21,6 +24,9 @@ interface CropModalProps {
 const MAX_DISPLAY_W = 600;
 const MAX_DISPLAY_H = 500;
 
+// Minimum crop box dimension in display-px
+const MIN_CROP = 40;
+
 export default function CropModal({
     imageSrc,
     aspectRatio,
@@ -30,6 +36,7 @@ export default function CropModal({
     onCancel,
 }: CropModalProps) {
     const imgRef = useRef<HTMLImageElement | null>(null);
+    const locked = aspectRatio !== undefined;
 
     // Natural image dimensions
     const [naturalW, setNaturalW] = useState(0);
@@ -46,14 +53,25 @@ export default function CropModal({
     const [cropX, setCropX] = useState(0);
     const [cropY, setCropY] = useState(0);
 
-    // Crop box dimensions in display-px (computed from aspect ratio)
+    // Crop box dimensions in display-px
     const [cropW, setCropW] = useState(0);
     const [cropH, setCropH] = useState(0);
 
-    // Drag state
+    // Drag state (move crop box)
     const dragging = useRef(false);
     const dragStart = useRef({ x: 0, y: 0 });
     const cropStart = useRef({ x: 0, y: 0 });
+
+    // Corner-resize drag state
+    const resizing = useRef<string | null>(null);
+    const resizeStart = useRef({
+        x: 0,
+        y: 0,
+        cropX: 0,
+        cropY: 0,
+        cropW: 0,
+        cropH: 0,
+    });
 
     // Load image and compute layout
     const handleImageLoad = useCallback(
@@ -74,33 +92,36 @@ export default function CropModal({
             setDisplayW(dw);
             setDisplayH(dh);
 
-            // Compute the largest crop box that fits within the displayed image
-            // while maintaining the target aspect ratio
+            // Compute the largest crop box that fits
             let cw: number;
             let ch: number;
-            if (dw / dh > aspectRatio) {
-                // Image is wider than target — height is the constraint
-                ch = dh;
-                cw = Math.round(ch * aspectRatio);
+            if (locked) {
+                if (dw / dh > aspectRatio) {
+                    ch = dh;
+                    cw = Math.round(ch * aspectRatio);
+                } else {
+                    cw = dw;
+                    ch = Math.round(cw / aspectRatio);
+                }
             } else {
-                // Image is taller than target — width is the constraint
+                // Free-form: start at full image
                 cw = dw;
-                ch = Math.round(cw / aspectRatio);
+                ch = dh;
             }
 
             setCropW(cw);
             setCropH(ch);
-
-            // Centre the crop box
             setCropX(Math.round((dw - cw) / 2));
             setCropY(Math.round((dh - ch) / 2));
         },
-        [aspectRatio],
+        [aspectRatio, locked],
     );
 
-    // ── Drag the crop box ──
+    // ── Drag the crop box (move) ──
     const onPointerDown = useCallback(
         (e: React.PointerEvent) => {
+            // Ignore if a corner handle started the interaction
+            if (resizing.current) return;
             dragging.current = true;
             dragStart.current = { x: e.clientX, y: e.clientY };
             cropStart.current = { x: cropX, y: cropY };
@@ -115,23 +136,122 @@ export default function CropModal({
             const dx = e.clientX - dragStart.current.x;
             const dy = e.clientY - dragStart.current.y;
 
-            const newX = Math.min(
-                displayW - cropW,
-                Math.max(0, cropStart.current.x + dx),
+            setCropX(
+                Math.min(
+                    displayW - cropW,
+                    Math.max(0, cropStart.current.x + dx),
+                ),
             );
-            const newY = Math.min(
-                displayH - cropH,
-                Math.max(0, cropStart.current.y + dy),
+            setCropY(
+                Math.min(
+                    displayH - cropH,
+                    Math.max(0, cropStart.current.y + dy),
+                ),
             );
-
-            setCropX(newX);
-            setCropY(newY);
         },
         [displayW, displayH, cropW, cropH],
     );
 
     const onPointerUp = useCallback(() => {
         dragging.current = false;
+    }, []);
+
+    // ── Corner resize handlers ──
+    const onCornerPointerDown = useCallback(
+        (corner: string, e: React.PointerEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resizing.current = corner;
+            resizeStart.current = {
+                x: e.clientX,
+                y: e.clientY,
+                cropX,
+                cropY,
+                cropW,
+                cropH,
+            };
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        },
+        [cropX, cropY, cropW, cropH],
+    );
+
+    const onCornerPointerMove = useCallback(
+        (e: React.PointerEvent) => {
+            if (!resizing.current) return;
+            const corner = resizing.current;
+            const s = resizeStart.current;
+            const dx = e.clientX - s.x;
+            const dy = e.clientY - s.y;
+
+            let newX = s.cropX;
+            let newY = s.cropY;
+            let newW = s.cropW;
+            let newH = s.cropH;
+
+            if (locked) {
+                // Locked aspect ratio: derive height from width
+                if (corner === "br") {
+                    newW = Math.max(MIN_CROP, s.cropW + dx);
+                    newH = Math.round(newW / aspectRatio!);
+                } else if (corner === "bl") {
+                    const dw = -dx;
+                    newW = Math.max(MIN_CROP, s.cropW + dw);
+                    newH = Math.round(newW / aspectRatio!);
+                    newX = s.cropX + s.cropW - newW;
+                } else if (corner === "tr") {
+                    newW = Math.max(MIN_CROP, s.cropW + dx);
+                    newH = Math.round(newW / aspectRatio!);
+                    newY = s.cropY + s.cropH - newH;
+                } else if (corner === "tl") {
+                    const dw = -dx;
+                    newW = Math.max(MIN_CROP, s.cropW + dw);
+                    newH = Math.round(newW / aspectRatio!);
+                    newX = s.cropX + s.cropW - newW;
+                    newY = s.cropY + s.cropH - newH;
+                }
+            } else {
+                // Free-form: width and height move independently
+                if (corner === "br") {
+                    newW = Math.max(MIN_CROP, s.cropW + dx);
+                    newH = Math.max(MIN_CROP, s.cropH + dy);
+                } else if (corner === "bl") {
+                    newW = Math.max(MIN_CROP, s.cropW - dx);
+                    newH = Math.max(MIN_CROP, s.cropH + dy);
+                    newX = s.cropX + s.cropW - newW;
+                } else if (corner === "tr") {
+                    newW = Math.max(MIN_CROP, s.cropW + dx);
+                    newH = Math.max(MIN_CROP, s.cropH - dy);
+                    newY = s.cropY + s.cropH - newH;
+                } else if (corner === "tl") {
+                    newW = Math.max(MIN_CROP, s.cropW - dx);
+                    newH = Math.max(MIN_CROP, s.cropH - dy);
+                    newX = s.cropX + s.cropW - newW;
+                    newY = s.cropY + s.cropH - newH;
+                }
+            }
+
+            // Clamp to image bounds
+            if (newX < 0) {
+                newW += newX;
+                newX = 0;
+            }
+            if (newY < 0) {
+                newH += newY;
+                newY = 0;
+            }
+            if (newX + newW > displayW) newW = displayW - newX;
+            if (newY + newH > displayH) newH = displayH - newY;
+
+            setCropX(newX);
+            setCropY(newY);
+            setCropW(Math.max(MIN_CROP, newW));
+            setCropH(Math.max(MIN_CROP, newH));
+        },
+        [displayW, displayH, locked, aspectRatio],
+    );
+
+    const onCornerPointerUp = useCallback(() => {
+        resizing.current = null;
     }, []);
 
     // ── Scroll to resize crop box ──
@@ -141,26 +261,32 @@ export default function CropModal({
 
             const zoomFactor = e.deltaY < 0 ? 1.06 : 1 / 1.06;
 
-            // Compute new crop width, clamped to image bounds
-            const minCW = Math.min(80, displayW);
+            const minCW = Math.min(MIN_CROP, displayW);
             const maxCW = displayW;
             let newCW = Math.round(cropW * zoomFactor);
             newCW = Math.max(minCW, Math.min(maxCW, newCW));
 
-            let newCH = Math.round(newCW / aspectRatio);
-            // Clamp by height too
-            if (newCH > displayH) {
-                newCH = displayH;
-                newCW = Math.round(newCH * aspectRatio);
+            let newCH: number;
+            if (locked) {
+                newCH = Math.round(newCW / aspectRatio!);
+                if (newCH > displayH) {
+                    newCH = displayH;
+                    newCW = Math.round(newCH * aspectRatio!);
+                }
+            } else {
+                newCH = Math.round(cropH * zoomFactor);
+                newCH = Math.max(
+                    Math.min(MIN_CROP, displayH),
+                    Math.min(displayH, newCH),
+                );
+                if (newCW > displayW) newCW = displayW;
             }
 
-            // Keep the crop box centred on its current centre
+            // Keep centred
             const cx = cropX + cropW / 2;
             const cy = cropY + cropH / 2;
             let newX = Math.round(cx - newCW / 2);
             let newY = Math.round(cy - newCH / 2);
-
-            // Clamp position
             newX = Math.max(0, Math.min(displayW - newCW, newX));
             newY = Math.max(0, Math.min(displayH - newCH, newY));
 
@@ -169,18 +295,12 @@ export default function CropModal({
             setCropX(newX);
             setCropY(newY);
         },
-        [cropX, cropY, cropW, cropH, displayW, displayH, aspectRatio],
+        [cropX, cropY, cropW, cropH, displayW, displayH, locked, aspectRatio],
     );
 
     // ── Crop & export ──
     const handleCrop = useCallback(() => {
         if (!imgRef.current) return;
-
-        const outputHeight = Math.round(outputWidth / aspectRatio);
-        const canvas = document.createElement("canvas");
-        canvas.width = outputWidth;
-        canvas.height = outputHeight;
-        const ctx = canvas.getContext("2d")!;
 
         // Convert crop box position from display-px back to natural-px
         const srcX = cropX / displayScale;
@@ -188,21 +308,21 @@ export default function CropModal({
         const srcW = cropW / displayScale;
         const srcH = cropH / displayScale;
 
+        // Output dimensions: maintain cropped region's aspect ratio
+        const cropRatio = srcW / srcH;
+        const outW = Math.min(outputWidth, Math.round(srcW));
+        const outH = Math.round(outW / cropRatio);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext("2d")!;
+
         if (grayscale) {
             ctx.filter = "grayscale(100%)";
         }
 
-        ctx.drawImage(
-            imgRef.current,
-            srcX,
-            srcY,
-            srcW,
-            srcH,
-            0,
-            0,
-            outputWidth,
-            outputHeight,
-        );
+        ctx.drawImage(imgRef.current, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
 
         canvas.toBlob(
             (blob) => {
@@ -218,7 +338,6 @@ export default function CropModal({
         cropH,
         displayScale,
         outputWidth,
-        aspectRatio,
         grayscale,
         onCrop,
     ]);
@@ -226,7 +345,10 @@ export default function CropModal({
     // Close on Escape
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onCancel();
+            if (e.key === "Escape") {
+                e.preventDefault();
+                onCancel();
+            }
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
@@ -234,12 +356,23 @@ export default function CropModal({
 
     const monoFont = "var(--font-geist-mono), monospace";
 
-    // Clip-path to dim areas outside the crop box (the "letterbox" effect).
-    // We use a polygon with a hole (outer rect CW, inner rect CCW).
+    // Clip-path to dim areas outside the crop box
     const clipDim =
         displayW > 0 && displayH > 0
             ? `polygon(evenodd, 0 0, ${displayW}px 0, ${displayW}px ${displayH}px, 0 ${displayH}px, 0 0, ${cropX}px ${cropY}px, ${cropX}px ${cropY + cropH}px, ${cropX + cropW}px ${cropY + cropH}px, ${cropX + cropW}px ${cropY}px, ${cropX}px ${cropY}px)`
             : undefined;
+
+    // Corner handle positions + cursors
+    const corners: {
+        key: string;
+        style: React.CSSProperties;
+        cursor: string;
+    }[] = [
+        { key: "tl", style: { top: -4, left: -4 }, cursor: "nwse-resize" },
+        { key: "tr", style: { top: -4, right: -4 }, cursor: "nesw-resize" },
+        { key: "bl", style: { bottom: -4, left: -4 }, cursor: "nesw-resize" },
+        { key: "br", style: { bottom: -4, right: -4 }, cursor: "nwse-resize" },
+    ];
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -249,10 +382,10 @@ export default function CropModal({
                     className="text-xs tracking-[2px] uppercase text-white/50"
                     style={{ fontFamily: monoFont }}
                 >
-                    Drag the crop box · Scroll to resize
+                    Drag to move · Drag corners to resize · Scroll to scale
                 </p>
 
-                {/* Image container — shows the full image */}
+                {/* Image container */}
                 <div
                     className="relative overflow-hidden rounded border border-white/20"
                     style={{
@@ -314,24 +447,27 @@ export default function CropModal({
                             onPointerMove={onPointerMove}
                             onPointerUp={onPointerUp}
                         >
-                            {/* Corner indicators */}
-                            {[
-                                { top: -3, left: -3 },
-                                { top: -3, right: -3 },
-                                { bottom: -3, left: -3 },
-                                { bottom: -3, right: -3 },
-                            ].map((pos, i) => (
+                            {/* Corner drag handles */}
+                            {corners.map(({ key, style, cursor }) => (
                                 <div
-                                    key={i}
+                                    key={key}
                                     style={{
                                         position: "absolute",
-                                        ...pos,
-                                        width: 8,
-                                        height: 8,
+                                        ...style,
+                                        width: 10,
+                                        height: 10,
                                         background: "rgba(255,255,255,0.9)",
                                         borderRadius: 1,
-                                        pointerEvents: "none",
+                                        cursor,
+                                        touchAction: "none",
+                                        zIndex: 10,
                                     }}
+                                    onPointerDown={(e) =>
+                                        onCornerPointerDown(key, e)
+                                    }
+                                    onPointerMove={onCornerPointerMove}
+                                    onPointerUp={onCornerPointerUp}
+                                    onPointerCancel={onCornerPointerUp}
                                 />
                             ))}
                         </div>

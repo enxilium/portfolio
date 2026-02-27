@@ -349,7 +349,6 @@ export default function ContentOverlay() {
                     right: "3.5rem",
                     bottom: "3.5rem",
                     left: "3.5rem",
-                    overflowY: "auto",
                     background: "rgba(8, 8, 12, 0.72)",
                     borderRadius: "12px",
                     transform: fadedIn ? "scale(1)" : "scale(0.97)",
